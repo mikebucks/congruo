@@ -108,6 +108,43 @@ export function ReportSummary({
         </div>
       </div>
 
+      {data.delta && (
+        <div className="mt-4 flex items-center gap-4 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm">
+          <span className="text-xs text-neutral-500">
+            Since {data.delta.previousDate.toISOString().slice(0, 10)}
+          </span>
+          {data.delta.comparable ? (
+            <>
+              {data.delta.topline !== null && (
+                <span
+                  className={`font-medium tabular-nums ${
+                    data.delta.topline > 0
+                      ? "text-green-700"
+                      : data.delta.topline < 0
+                        ? "text-red-700"
+                        : "text-neutral-500"
+                  }`}
+                >
+                  {data.delta.topline > 0 ? "+" : ""}
+                  {Math.round(data.delta.topline)} health
+                </span>
+              )}
+              <span className="text-amber-700">{data.delta.newCount} new</span>
+              <span className="text-green-700">
+                {data.delta.resolvedCount} resolved
+              </span>
+              <span className="text-neutral-500">
+                {data.delta.persistingCount} persisting
+              </span>
+            </>
+          ) : (
+            <span className="text-neutral-500">
+              sources changed — deltas not comparable
+            </span>
+          )}
+        </div>
+      )}
+
       {data.coverage && <CoverageRow c={data.coverage} />}
 
       <section className="mt-8">

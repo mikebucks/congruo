@@ -61,9 +61,7 @@ export const adoption: Analyzer = (graph, mappings) => {
     } else if (
       total >= 2 &&
       files.size === 1 &&
-      (instances > 0 ? figmaFiles.size : 0) +
-        (jsx > 0 ? codeFiles.size : 0) >
-        1
+      (instances > 0 ? figmaFiles.size : 0) + (jsx > 0 ? codeFiles.size : 0) > 1
     ) {
       findings.push(
         createFinding({

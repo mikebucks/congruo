@@ -2,7 +2,8 @@ import type { Dimension, Severity } from "@congruo/core";
 import { refKey } from "@congruo/core";
 import { schema } from "@congruo/db";
 import type { CoverageSummary } from "@congruo/scoring";
-import { eq } from "drizzle-orm";
+import { diffFindings, diffScores } from "@congruo/scoring";
+import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "./server";
 
 export interface ReportData {
@@ -23,6 +24,7 @@ export interface ReportData {
   >;
   systemScores: Partial<Record<Dimension, number | null>>;
   coverage: CoverageSummary | null;
+  delta: ReportDelta | null;
 }
 
 export async function loadReport(
@@ -79,6 +81,66 @@ export async function loadReport(
     componentScores,
     systemScores,
     coverage: (snapshot.coverage as unknown as CoverageSummary) ?? null,
+    delta: await computeDelta(snapshot, sources, findings, systemScores),
+  };
+}
+
+export interface ReportDelta {
+  previousDate: Date;
+  comparable: boolean;
+  newCount: number;
+  resolvedCount: number;
+  persistingCount: number;
+  topline: number | null;
+}
+
+/** Deltas come from diffing the previous immutable snapshot — never stored. */
+async function computeDelta(
+  snapshot: ReportData["snapshot"],
+  sources: ReportData["sources"],
+  findings: { fingerprint: string }[],
+  systemScores: ReportData["systemScores"],
+): Promise<ReportDelta | null> {
+  const previous = await db().query.snapshots.findFirst({
+    where: and(
+      eq(schema.snapshots.workspaceId, snapshot.workspaceId),
+      lt(schema.snapshots.createdAt, snapshot.createdAt),
+    ),
+    orderBy: desc(schema.snapshots.createdAt),
+  });
+  if (!previous) return null;
+
+  const [prevFindings, prevSources] = await Promise.all([
+    db()
+      .select({ fingerprint: schema.findingOccurrences.fingerprint })
+      .from(schema.findingOccurrences)
+      .where(eq(schema.findingOccurrences.snapshotId, previous.id)),
+    db().query.snapshotSources.findMany({
+      where: eq(schema.snapshotSources.snapshotId, previous.id),
+    }),
+  ]);
+
+  const diff = diffFindings(
+    {
+      fingerprints: prevFindings.map((f) => f.fingerprint),
+      artifactIds: prevSources.map((s) => s.artifact.id),
+    },
+    {
+      fingerprints: findings.map((f) => f.fingerprint),
+      artifactIds: sources.map((s) => s.artifact.id),
+    },
+  );
+  const scoreDelta = diffScores(
+    { topline: previous.topline, system: {} },
+    { topline: snapshot.topline, system: systemScores },
+  );
+  return {
+    previousDate: previous.createdAt,
+    comparable: diff.comparable,
+    newCount: diff.newFingerprints.size,
+    resolvedCount: diff.resolvedFingerprints.size,
+    persistingCount: diff.persistingCount,
+    topline: scoreDelta.topline,
   };
 }
 
