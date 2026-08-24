@@ -13,8 +13,12 @@ export { FINGERPRINT_VERSION, fingerprint } from "./identity";
 export {
   AUTO_THRESHOLD,
   type MatchResult,
+  matchProps,
   normalizeName,
   proposeMappings,
+  proposeTokenMappings,
+  SUGGEST_THRESHOLD,
+  similarity,
 } from "./matcher/index";
 export type {
   CanonicalExtract,

@@ -1,0 +1,56 @@
+{
+  "description": "Gold-corpus labels: every seeded issue in acme-ds by finding type. P/R per type is measured against this file (M3+). Negative controls listed to catch false positives.",
+  "expected": [
+    {
+      "type": "HARDCODED_VALUE_CODE",
+      "component": "Button",
+      "note": "#ff5733 borderColor in Button.tsx"
+    },
+    {
+      "type": "HARDCODED_VALUE_CODE",
+      "component": "LocalBadge",
+      "note": "#123456 in app LocalBadge — counts only if local components are scanned (coverage), never as a DS finding"
+    },
+    {
+      "type": "REDUNDANT_COMPONENT",
+      "component": "ButtonNew",
+      "note": "near-duplicate of Button; must also stay unmatched from Figma Button (M3)"
+    },
+    {
+      "type": "UNUSED_PROP",
+      "component": "Tag",
+      "note": "prop 'rounded' never set in any observed usage (M3)"
+    },
+    {
+      "type": "UNUSED_COMPONENT",
+      "component": "Stepper",
+      "note": "exported, zero usages"
+    },
+    {
+      "type": "NO_STORY",
+      "component": "Banner",
+      "note": "no .stories.* file (M3)"
+    },
+    {
+      "type": "PROPS_UNDOCUMENTED",
+      "component": "Banner",
+      "note": "no JSDoc on any prop (M3)"
+    },
+    {
+      "type": "SINGLE_FILE_ADOPTION",
+      "component": "Card",
+      "note": "used only in Home.tsx (M3)"
+    }
+  ],
+  "propMappingCases": [
+    { "figma": "Disabled", "code": "isDisabled", "component": "Input" },
+    { "figma": "Size=lg", "code": "size=\"lg\"", "component": "Input" }
+  ],
+  "negativeControls": [
+    { "component": "Badge", "note": "documented + storied: no docs findings" },
+    {
+      "component": "Button",
+      "note": "used in 2 files: no adoption findings"
+    }
+  ]
+}

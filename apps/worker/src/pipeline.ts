@@ -5,11 +5,18 @@ import type {
   CanonicalGraph,
   MappingSetRevision,
 } from "@congruo/core";
-import { FINGERPRINT_VERSION, proposeMappings, refKey } from "@congruo/core";
+import {
+  FINGERPRINT_VERSION,
+  proposeMappings,
+  proposeTokenMappings,
+  refKey,
+  tokenKey,
+} from "@congruo/core";
 import type { Db } from "@congruo/db";
 import { decryptToken, schema } from "@congruo/db";
 import { CodeAdapter, type CodeConfig } from "@congruo/ingest-code";
 import { FigmaAdapter, type FigmaConfig } from "@congruo/ingest-figma";
+import { computeCoverage } from "@congruo/scoring";
 import { desc, eq, inArray } from "drizzle-orm";
 
 export interface AuditDeps {
@@ -105,12 +112,21 @@ async function runPipeline(
     tokenMappings: [],
   };
   const userMapped = new Set(userSet.mappings.map((m) => refKey(m.figmaRef)));
+  const vetoed = new Set(userSet.unlinked ?? []);
   const auto = proposeMappings(figma, code).proposed.filter(
-    (m) => !userMapped.has(refKey(m.figmaRef)),
+    (m) =>
+      !userMapped.has(refKey(m.figmaRef)) && !vetoed.has(refKey(m.figmaRef)),
+  );
+  const userTokenMapped = new Set(
+    userSet.tokenMappings.map((m) => tokenKey(m.figmaToken)),
+  );
+  const autoTokens = proposeTokenMappings(figma, code).filter(
+    (m) => !userTokenMapped.has(tokenKey(m.figmaToken)),
   );
   const effective: MappingSetRevision = {
     ...userSet,
     mappings: [...userSet.mappings, ...auto],
+    tokenMappings: [...userSet.tokenMappings, ...autoTokens],
   };
 
   // 3. Analyze
@@ -154,6 +170,7 @@ async function runPipeline(
       mappingSet: effective,
       analyzerConfig: {},
       rubric: {},
+      coverage: computeCoverage(graph) as unknown as Record<string, unknown>,
     });
     await tx.insert(schema.snapshotSources).values(
       [...figma.artifacts, ...code.artifacts].map((artifact) => ({

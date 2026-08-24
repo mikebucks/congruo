@@ -51,7 +51,10 @@ beforeAll(async () => {
         rootDir: acmeRoot,
         repo: "acme/acme-ds",
         sha: "local",
-        dsPackage: { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+        dsPackage: {
+          name: "@acme/ui",
+          srcGlob: "packages/ui/src/**/*.{ts,tsx}",
+        },
         appGlob: "app/src/**/*.tsx",
       },
     },
@@ -127,6 +130,79 @@ test("a second audit preserves firstSeenSnapshot for persisting findings", async
   expect(
     findings.every((f) => f.firstSeenSnapshotId === firstSnapshot?.id),
   ).toBe(true);
+});
+
+test("M2 gate: user override + status respected in new snapshot, absent from old", async () => {
+  const oldSnapshot = await ctx.db.query.snapshots.findFirst({
+    where: eq(schema.snapshots.runId, "run-1"),
+  });
+  if (!oldSnapshot) throw new Error("run-1 snapshot missing");
+  const autoButton = oldSnapshot.mappingSet.mappings.find(
+    (m) => m.codeRef.kind === "code" && m.codeRef.exportSymbol === "Button",
+  );
+  expect(autoButton?.source).toBe("auto");
+
+  // user edits: remap figma Button → code ButtonNew; Stepper experimental
+  const stepperRef = {
+    kind: "code" as const,
+    repo: "acme/acme-ds",
+    pkg: "@acme/ui",
+    exportSymbol: "Stepper",
+    filePath: "packages/ui/src/Stepper.tsx",
+  };
+  await ctx.db.insert(schema.mappingSetRevisions).values({
+    workspaceId,
+    revision: 1,
+    data: {
+      revision: 1,
+      mappings: [
+        {
+          figmaRef: autoButton?.figmaRef ?? {
+            kind: "figma",
+            fileKey: "",
+            componentKey: "",
+          },
+          codeRef: { ...stepperRef, exportSymbol: "ButtonNew", filePath: "" },
+          confidence: 1,
+          source: "user",
+          propMappings: [],
+        },
+      ],
+      statuses: [{ ref: stepperRef, status: "experimental" }],
+      tokenMappings: [],
+    },
+  });
+
+  await createRun("run-3");
+  const { snapshotId } = await executeAuditRun(deps(), "run-3");
+  const newSnapshot = await ctx.db.query.snapshots.findFirst({
+    where: eq(schema.snapshots.id, snapshotId),
+  });
+
+  const userButton = newSnapshot?.mappingSet.mappings.find(
+    (m) => m.source === "user",
+  );
+  expect(
+    userButton?.codeRef.kind === "code" && userButton.codeRef.exportSymbol,
+  ).toBe("ButtonNew");
+
+  const newFindings = await ctx.db.query.findingOccurrences.findMany({
+    where: eq(schema.findingOccurrences.snapshotId, snapshotId),
+  });
+  const stepperUnused = newFindings.find(
+    (f) =>
+      f.type === "UNUSED_COMPONENT" && f.subjectRefKey?.includes("Stepper"),
+  );
+  expect(stepperUnused).toBeUndefined(); // experimental → exempt from adoption
+
+  // the old snapshot is untouched: still the auto mapping, no user edits
+  const oldAgain = await ctx.db.query.snapshots.findFirst({
+    where: eq(schema.snapshots.runId, "run-1"),
+  });
+  expect(oldAgain?.mappingSet.mappings.every((m) => m.source === "auto")).toBe(
+    true,
+  );
+  expect(oldAgain?.mappingSet.statuses).toEqual([]);
 });
 
 test("mid-run failure marks the run failed and seals nothing", async () => {

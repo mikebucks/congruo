@@ -85,6 +85,8 @@ export const snapshots = pgTable("snapshots", {
     .notNull()
     .$type<Record<string, unknown>>(),
   rubric: jsonb("rubric").notNull().$type<Record<string, unknown>>(),
+  /** Frozen coverage read model (CoverageSummary from @congruo/scoring). */
+  coverage: jsonb("coverage").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

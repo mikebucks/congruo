@@ -27,6 +27,13 @@ export interface FigmaNode {
   styles?: Record<string, string>;
   fills?: FigmaPaint[];
   strokes?: FigmaPaint[];
+  /** TEXT node typography. */
+  style?: { fontSize?: number };
+  paddingLeft?: number;
+  paddingRight?: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  itemSpacing?: number;
   componentId?: string;
   componentProperties?: Record<
     string,

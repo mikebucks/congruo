@@ -1,6 +1,7 @@
 // Dev seed: workspace + connections from .env. Usage: tsx scripts/seed.ts
-import { createDb, encryptToken, parseEncKey, schema } from "@congruo/db";
+
 import { fileURLToPath } from "node:url";
+import { createDb, encryptToken, parseEncKey, schema } from "@congruo/db";
 
 process.loadEnvFile(new URL("../../../.env", import.meta.url).pathname);
 const db = createDb(process.env.DATABASE_URL ?? "");

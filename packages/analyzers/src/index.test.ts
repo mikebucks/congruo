@@ -47,6 +47,8 @@ function usage(ref: ComponentRef | null): ComponentUsage {
     artifactId: "consumer",
     location: { kind: "figma", fileKey: "C", fileVersion: "1", nodeId: "1:1" },
     overriddenProps: {},
+    kind: "component",
+    name: "X",
   };
 }
 
@@ -92,7 +94,7 @@ test("matcher proposes exact and DS-prefixed matches, leaves ambiguity unmatched
   expect(pairs.sort()).toEqual(["DsButton", "Tag"]);
   expect(result.unmatchedFigma).toEqual(["Banner"]);
   expect(result.unmatchedCode).toEqual(["ButtonNew"]);
-  const dsButton = result.proposed.find((m) => pairs.includes("DsButton"));
+  const dsButton = result.proposed.find((_m) => pairs.includes("DsButton"));
   expect(dsButton?.confidence).toBeLessThan(1);
 });
 
@@ -142,7 +144,9 @@ test("HARDCODED_VALUE_CODE carries value and location", () => {
     code: extract({
       definitions: [
         def(codeRef("Button"), "Button", {
-          hardcodedValues: [{ value: "#ff5733", property: "style", location: loc }],
+          hardcodedValues: [
+            { value: "#ff5733", property: "style", location: loc },
+          ],
         }),
       ],
     }),

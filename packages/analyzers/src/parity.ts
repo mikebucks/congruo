@@ -35,7 +35,11 @@ export const hardcodedValueCode: Analyzer = (graph) => {
         createFinding({
           type: "HARDCODED_VALUE_CODE",
           subjectRef: def.ref,
-          evidence: { value: hv.value, property: hv.property, matchingToken: null },
+          evidence: {
+            value: hv.value,
+            property: hv.property,
+            matchingToken: null,
+          },
           locations: [hv.location],
         }),
       );

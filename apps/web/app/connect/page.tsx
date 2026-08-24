@@ -29,7 +29,11 @@ export default function Connect() {
     <main className="mx-auto max-w-xl p-8">
       <h1 className="text-2xl font-semibold">Connect sources</h1>
       <form action={saveConnections} className="mt-6 space-y-4">
-        <Field label="Workspace name" name="workspaceName" placeholder="Acme DS" />
+        <Field
+          label="Workspace name"
+          name="workspaceName"
+          placeholder="Acme DS"
+        />
         <h2 className="pt-2 text-sm font-medium text-neutral-500">Figma</h2>
         <Field label="Personal access token" name="figmaPat" type="password" />
         <Field
@@ -48,7 +52,11 @@ export default function Connect() {
           placeholder="/path/to/checkout"
         />
         <Field label="Repo identity" name="repo" placeholder="acme/ui" />
-        <Field label="DS package name" name="dsPackageName" placeholder="@acme/ui" />
+        <Field
+          label="DS package name"
+          name="dsPackageName"
+          placeholder="@acme/ui"
+        />
         <Field
           label="DS source glob"
           name="dsSrcGlob"

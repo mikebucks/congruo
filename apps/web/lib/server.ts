@@ -1,4 +1,4 @@
-import { type Db, createDb, parseEncKey } from "@congruo/db";
+import { createDb, type Db, parseEncKey } from "@congruo/db";
 import { PgBoss } from "pg-boss";
 
 try {

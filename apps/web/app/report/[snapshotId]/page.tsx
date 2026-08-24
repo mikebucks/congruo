@@ -1,5 +1,6 @@
 import type { Severity } from "@congruo/core";
 import { schema } from "@congruo/db";
+import type { CoverageSummary } from "@congruo/scoring";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,6 +13,35 @@ const severityStyle: Record<Severity, string> = {
   warn: "bg-amber-100 text-amber-800",
   info: "bg-sky-100 text-sky-800",
 };
+
+function CoverageBlock({ coverage: c }: { coverage: CoverageSummary }) {
+  const stat = (label: string, value: string, detail: string) => (
+    <div className="rounded-lg border border-neutral-200 bg-white p-3">
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="text-2xl font-semibold tabular-nums">{value}</div>
+      <div className="mt-0.5 text-xs text-neutral-400">{detail}</div>
+    </div>
+  );
+  return (
+    <div className="mt-6 grid grid-cols-3 gap-3">
+      {stat(
+        "Figma DS coverage",
+        c.figma.coveragePct === null ? "—" : `${c.figma.coveragePct}%`,
+        `${c.figma.dsInstances}/${c.figma.totalInstances} instances`,
+      )}
+      {stat(
+        "Code DS coverage",
+        c.code.coveragePct === null ? "—" : `${c.code.coveragePct}%`,
+        `${c.code.dsUsages} DS · ${c.code.localComponentUsages} local · ${c.code.rawStyledElements} raw styled`,
+      )}
+      {stat(
+        "Token health",
+        c.tokens.healthPct === null ? "—" : `${c.tokens.healthPct}%`,
+        `${c.tokens.figmaBound + c.tokens.codeBound} bound · ${c.tokens.figmaHardcoded + c.tokens.codeHardcoded} hardcoded`,
+      )}
+    </div>
+  );
+}
 
 export default async function Report({
   params,
@@ -46,6 +76,12 @@ export default async function Report({
         {snapshot.createdAt.toISOString().slice(0, 16).replace("T", " ")} ·{" "}
         {findings.length} findings · fingerprint v{snapshot.fingerprintVersion}
       </p>
+
+      {snapshot.coverage && (
+        <CoverageBlock
+          coverage={snapshot.coverage as unknown as CoverageSummary}
+        />
+      )}
 
       <div className="mt-4 rounded-lg bg-neutral-100 p-4 text-xs text-neutral-600">
         {sources.map((s) => (

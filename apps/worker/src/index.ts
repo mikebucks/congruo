@@ -1,4 +1,4 @@
-import { FsBlobStore, createDb, parseEncKey } from "@congruo/db";
+import { createDb, FsBlobStore, parseEncKey } from "@congruo/db";
 import { PgBoss } from "pg-boss";
 import { executeAuditRun } from "./pipeline";
 
@@ -30,7 +30,10 @@ await boss.createQueue("audit", {
 await boss.work<{ runId: string }>("audit", async ([job]) => {
   if (!job) return;
   console.log(`audit run ${job.data.runId} starting`);
-  const { snapshotId } = await executeAuditRun({ db, blobs, encKeys }, job.data.runId);
+  const { snapshotId } = await executeAuditRun(
+    { db, blobs, encKeys },
+    job.data.runId,
+  );
   console.log(`audit run ${job.data.runId} sealed snapshot ${snapshotId}`);
 });
 

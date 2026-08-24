@@ -1,8 +1,8 @@
 import { schema } from "@congruo/db";
 import { desc, eq } from "drizzle-orm";
 import Link from "next/link";
-import { startAudit } from "./actions";
 import { db } from "../lib/server";
+import { startAudit } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,12 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-3xl p-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{workspace.name}</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">{workspace.name}</h1>
+          <Link className="text-sm text-blue-600 underline" href="/mapping">
+            Mapping review
+          </Link>
+        </div>
         <form action={startAudit}>
           <input type="hidden" name="workspaceId" value={workspace.id} />
           <button

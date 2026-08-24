@@ -41,6 +41,9 @@ importers:
       '@congruo/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@congruo/scoring':
+        specifier: workspace:*
+        version: link:../../packages/scoring
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -96,6 +99,9 @@ importers:
       '@congruo/ingest-figma':
         specifier: workspace:*
         version: link:../../packages/ingest-figma
+      '@congruo/scoring':
+        specifier: workspace:*
+        version: link:../../packages/scoring
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -191,6 +197,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.3.0
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -218,6 +227,10 @@ importers:
         version: 4.1.11(@types/node@26.3.0)(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
 
   packages/scoring:
+    dependencies:
+      '@congruo/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

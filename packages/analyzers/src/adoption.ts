@@ -41,9 +41,7 @@ export const unusedComponent: Analyzer = (graph, mappings) => {
     const jsx = codeRef ? (usageCount.get(refKey(codeRef)) ?? 0) : 0;
     if (instances === 0 && jsx === 0) emit(codeRef ?? def.ref, 0, 0);
   }
-  const mappedCode = new Set(
-    mappings.mappings.map((m) => refKey(m.codeRef)),
-  );
+  const mappedCode = new Set(mappings.mappings.map((m) => refKey(m.codeRef)));
   for (const def of graph.code.definitions) {
     if (mappedCode.has(refKey(def.ref))) continue; // counted via figma side
     const jsx = usageCount.get(refKey(def.ref)) ?? 0;

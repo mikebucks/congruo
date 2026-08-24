@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import type {
   BlobStore,
   CanonicalExtract,
@@ -17,14 +17,27 @@ import {
 } from "react-docgen-typescript";
 import { Project, SyntaxKind } from "ts-morph";
 
+export interface TokenPatterns {
+  /** Identifiers treated as theme objects: `theme.colors.border`. */
+  themeIdentifiers?: string[];
+  /** Tailwind-ish class prefixes treated as token refs: `bg-`, `p-`. */
+  tailwindPrefixes?: string[];
+}
+
 export interface CodeConfig {
-  /** Local checkout root. Clone-at-SHA wrapping arrives with the pipeline. */
+  /** Local checkout root — see clone.ts for the clone-at-SHA wrapper. */
   rootDir: string;
   repo: string;
   sha: string;
   dsPackage: { name: string; srcGlob: string };
   appGlob: string;
+  tokenPatterns?: TokenPatterns;
 }
+
+const DEFAULT_PATTERNS: Required<TokenPatterns> = {
+  themeIdentifiers: ["theme"],
+  tailwindPrefixes: [],
+};
 
 export class CodeAdapter implements SourceAdapter<CodeConfig> {
   async extract(
@@ -61,12 +74,23 @@ export class CodeAdapter implements SourceAdapter<CodeConfig> {
       skipFileDependencyResolution: true,
       compilerOptions: { allowJs: false },
     });
-    const dsFiles = project
-      .addSourceFilesAtPaths(join(config.rootDir, config.dsPackage.srcGlob))
+    const dsSourceFiles = project.addSourceFilesAtPaths(
+      join(config.rootDir, config.dsPackage.srcGlob),
+    );
+    const storyBasenames = new Set(
+      dsSourceFiles
+        .map((f) => basename(f.getFilePath()))
+        .filter((n) => /\.(stories|story)\.[jt]sx?$/.test(n))
+        .map((n) => n.replace(/\.(stories|story)\.[jt]sx?$/, "")),
+    );
+    const dsFiles = dsSourceFiles
       .map((f) => f.getFilePath() as string)
-      .filter((p) => !p.endsWith("index.ts"));
+      .filter(
+        (p) =>
+          !p.endsWith("index.ts") && !/\.(stories|story)\.[jt]sx?$/.test(p),
+      );
 
-    extractDefinitions(config, dsFiles, out);
+    extractDefinitions(config, dsFiles, storyBasenames, out);
     extractUsages(config, project, appArtifactId, out);
     return out;
   }
@@ -75,10 +99,12 @@ export class CodeAdapter implements SourceAdapter<CodeConfig> {
 function extractDefinitions(
   config: CodeConfig,
   dsFiles: string[],
+  storyBasenames: Set<string>,
   out: CanonicalExtract,
 ): void {
   const parser = makeParser(config, out);
   const docs = parser.parse(dsFiles);
+  const patterns = { ...DEFAULT_PATTERNS, ...config.tokenPatterns };
 
   const byFile = new Map<string, ComponentDoc[]>();
   const seenNames = new Set<string>();
@@ -103,8 +129,10 @@ function extractDefinitions(
       readFileSync(file, "utf8"),
       relPath,
       config.sha,
+      patterns,
     );
     for (const t of tokensUsed) seenTokens.set(tokenKey(t.token), t.token);
+    const fileBase = basename(file).replace(/\.[jt]sx?$/, "");
 
     for (const doc of fileDocs) {
       const props = Object.entries(doc.props).map(([name, p]) => ({
@@ -113,7 +141,7 @@ function extractDefinitions(
         values: literalValues(p.type),
         required: p.required,
       }));
-      if (Object.keys(doc.props).length === 0) {
+      if (props.length === 0) {
         out.diagnostics.push({
           artifactId: config.dsPackage.name,
           kind: "unsupported-pattern",
@@ -135,7 +163,7 @@ function extractDefinitions(
         tokensUsed,
         hardcodedValues,
         docs: {
-          storyExists: false,
+          storyExists: storyBasenames.has(fileBase),
           propsDocumented:
             props.length > 0 &&
             Object.values(doc.props).every((p) => p.description.length > 0),
@@ -177,26 +205,55 @@ function literalValues(type: { name: string; value?: unknown }): string[] {
     .filter((v) => v.length > 0);
 }
 
-/** Narrow WP1.3 detection: CSS custom properties as tokens, hex literals as
- * hardcoded values. Configurable pattern list arrives in WP2.2. */
-function scanStyleText(text: string, filePath: string, sha: string) {
+function codeToken(nativeId: string): TokenRef {
+  return {
+    nativeId,
+    resolvedName: nativeId,
+    source: "code",
+    resolutionConfidence: "exact",
+  };
+}
+
+/** Token/hardcoded detection over source text. Patterns are configurable per
+ * workspace: CSS custom properties, theme-object lookups, Tailwind prefixes. */
+function scanStyleText(
+  text: string,
+  filePath: string,
+  sha: string,
+  patterns: Required<TokenPatterns>,
+) {
   const tokensUsed: ComponentDefinition["tokensUsed"] = [];
   const hardcodedValues: ComponentDefinition["hardcodedValues"] = [];
   const seen = new Set<string>();
+  const use = (id: string, property: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    tokensUsed.push({ token: codeToken(id), property });
+  };
 
   for (const m of text.matchAll(/var\((--[a-z0-9-]+)\)/gi)) {
-    const name = m[1] ?? "";
-    if (seen.has(name)) continue;
-    seen.add(name);
-    tokensUsed.push({
-      token: {
-        nativeId: name,
-        resolvedName: name,
-        source: "code",
-        resolutionConfidence: "exact",
-      },
-      property: "style",
-    });
+    use(m[1] ?? "", "style");
+  }
+  for (const ident of patterns.themeIdentifiers) {
+    const re = new RegExp(
+      `\\b${ident}((?:\\.[a-zA-Z0-9_$]+|\\[["'][^"']+["']\\])+)`,
+      "g",
+    );
+    for (const m of text.matchAll(re)) {
+      const path = (m[1] ?? "")
+        .replace(/\[["']([^"']+)["']\]/g, ".$1")
+        .replace(/^\./, "");
+      use(`${ident}.${path}`, "style");
+    }
+  }
+  if (patterns.tailwindPrefixes.length > 0) {
+    for (const m of text.matchAll(/className="([^"]+)"/g)) {
+      for (const cls of (m[1] ?? "").split(/\s+/)) {
+        if (patterns.tailwindPrefixes.some((p) => cls.startsWith(p))) {
+          use(cls, "class");
+        }
+      }
+    }
   }
   for (const m of text.matchAll(/#[0-9a-f]{6}\b/gi)) {
     hardcodedValues.push({
@@ -235,7 +292,10 @@ function extractUsages(
     for (const imp of file.getImportDeclarations()) {
       if (imp.getModuleSpecifierValue() !== config.dsPackage.name) continue;
       for (const named of imp.getNamedImports()) {
-        dsImports.set(named.getAliasNode()?.getText() ?? named.getName(), named.getName());
+        dsImports.set(
+          named.getAliasNode()?.getText() ?? named.getName(),
+          named.getName(),
+        );
       }
     }
 
@@ -245,20 +305,24 @@ function extractUsages(
     ];
     for (const jsx of jsxNodes) {
       const tag = jsx.getTagNameNode().getText();
-      if (!/^[A-Z]/.test(tag)) continue; // host elements: coverage work, WP2.2
-
-      const exportSymbol = dsImports.get(tag);
-      const start = jsx.getStart();
-      const { line, column } = file.getLineAndColumnAtPos(start);
+      const attrs = jsx.getAttributes();
       const overriddenProps: Record<string, unknown> = {};
-      for (const attr of jsx.getAttributes()) {
+      let styled = false;
+      for (const attr of attrs) {
         if (!attr.isKind(SyntaxKind.JsxAttribute)) continue;
+        const name = attr.getNameNode().getText();
+        if (name === "style" || name === "className") styled = true;
         const init = attr.getInitializer();
-        overriddenProps[attr.getNameNode().getText()] =
-          init?.isKind(SyntaxKind.StringLiteral)
-            ? init.getLiteralValue()
-            : (init?.getText() ?? true);
+        overriddenProps[name] = init?.isKind(SyntaxKind.StringLiteral)
+          ? init.getLiteralValue()
+          : (init?.getText() ?? true);
       }
+
+      const isComponent = /^[A-Z]/.test(tag);
+      if (!isComponent && !styled) continue; // plain host element: not tracked
+
+      const { line, column } = file.getLineAndColumnAtPos(jsx.getStart());
+      const exportSymbol = isComponent ? dsImports.get(tag) : undefined;
       out.usages.push({
         definitionRef: exportSymbol
           ? {
@@ -280,6 +344,8 @@ function extractUsages(
           endCol: column,
         },
         overriddenProps,
+        kind: isComponent ? "component" : "styled-element",
+        name: tag,
       } satisfies ComponentUsage);
     }
   }

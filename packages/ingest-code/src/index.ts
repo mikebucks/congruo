@@ -1,1 +1,6 @@
-export { CodeAdapter, type CodeConfig } from "./adapter";
+export {
+  CodeAdapter,
+  type CodeConfig,
+  type TokenPatterns,
+} from "./adapter";
+export { type CloneConfig, cloneAndExtract } from "./clone";

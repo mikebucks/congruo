@@ -21,6 +21,7 @@
     "@congruo/db": "workspace:*",
     "@congruo/ingest-code": "workspace:*",
     "@congruo/ingest-figma": "workspace:*",
+    "@congruo/scoring": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg-boss": "^12.28.0"
   }

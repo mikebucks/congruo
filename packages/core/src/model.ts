@@ -32,11 +32,15 @@ export interface ComponentDefinition {
 }
 
 export interface ComponentUsage {
-  /** null = usage of something we could not resolve to a definition. */
+  /** null = local component or raw element — not resolved to a DS definition. */
   definitionRef: ComponentRef | null;
   artifactId: string;
   location: Loc;
   overriddenProps: Record<string, unknown>;
+  /** Coverage denominator: component usages vs raw styled host elements. */
+  kind: "component" | "styled-element";
+  /** Tag or component name as written at the usage site. */
+  name: string;
 }
 
 export interface TokenDefinition {
@@ -96,6 +100,8 @@ export interface MappingSetRevision {
   mappings: Mapping[];
   statuses: { ref: ComponentRef; status: ComponentStatus }[];
   tokenMappings: TokenMapping[];
+  /** refKeys the user explicitly unlinked — auto-matching must not re-pair. */
+  unlinked?: string[];
 }
 
 export type { CodeLoc };

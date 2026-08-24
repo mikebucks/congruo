@@ -227,27 +227,58 @@ function collectStyleValues(
       use(styleTokenRef(styleId, file.styles[styleId]), slot);
     }
 
-    const fillsBound =
-      n.boundVariables?.fills !== undefined || n.styles?.fill !== undefined;
-    if (!fillsBound) {
-      for (const paint of n.fills ?? []) {
+    const loc = (): FigmaLoc => ({
+      kind: "figma",
+      fileKey,
+      fileVersion: file.version,
+      nodeId: n.id,
+    });
+    const hardcode = (value: string, property: string) =>
+      def.hardcodedValues.push({ value, property, location: loc() });
+
+    for (const [slot, paints] of [
+      ["fill", n.fills],
+      ["stroke", n.strokes],
+    ] as const) {
+      const bound =
+        n.boundVariables?.[`${slot}s`] !== undefined ||
+        n.styles?.[slot] !== undefined ||
+        (slot === "stroke" && n.styles?.strokes !== undefined);
+      if (bound) continue;
+      for (const paint of paints ?? []) {
         if (
           paint.type === "SOLID" &&
           paint.visible !== false &&
           paint.color &&
           !paint.boundVariables?.color
         ) {
-          def.hardcodedValues.push({
-            value: rgbaToHex(paint.color),
-            property: "fill",
-            location: {
-              kind: "figma",
-              fileKey,
-              fileVersion: file.version,
-              nodeId: n.id,
-            } satisfies FigmaLoc,
-          });
+          hardcode(rgbaToHex(paint.color), slot);
         }
+      }
+    }
+
+    if (
+      n.type === "TEXT" &&
+      n.style?.fontSize !== undefined &&
+      n.boundVariables?.fontSize === undefined &&
+      n.styles?.text === undefined
+    ) {
+      hardcode(String(n.style.fontSize), "fontSize");
+    }
+    for (const prop of [
+      "paddingLeft",
+      "paddingRight",
+      "paddingTop",
+      "paddingBottom",
+      "itemSpacing",
+    ] as const) {
+      const value = n[prop];
+      if (
+        typeof value === "number" &&
+        value !== 0 &&
+        n.boundVariables?.[prop] === undefined
+      ) {
+        hardcode(String(value), prop);
       }
     }
     for (const c of n.children ?? []) walk(c, false);
@@ -308,6 +339,8 @@ function extractUsages(
           nodeId: n.id,
         },
         overriddenProps,
+        kind: "component",
+        name: meta?.name ?? n.name,
       } satisfies ComponentUsage);
       return; // nested instances belong to the child component
     }

@@ -58,7 +58,7 @@ test("stored connections never contain the plaintext token", async () => {
   expect(dump).not.toContain("THE-REAL-TOKEN");
 
   const stored = rows[0];
-  expect(
-    decryptToken(stored?.encryptedToken ?? "", { 1: key }),
-  ).toBe(plaintext);
+  expect(decryptToken(stored?.encryptedToken ?? "", { 1: key })).toBe(
+    plaintext,
+  );
 });

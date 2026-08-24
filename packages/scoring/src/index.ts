@@ -1,1 +1,1 @@
-export const packageName = "@congruo/scoring";
+export { type CoverageSummary, computeCoverage } from "./coverage";
