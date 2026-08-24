@@ -11,8 +11,13 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "@types/node": "catalog:"
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@congruo/core": "workspace:*",
+    "react-docgen-typescript": "^2.4.0",
+    "ts-morph": "^28.0.0"
   }
 }

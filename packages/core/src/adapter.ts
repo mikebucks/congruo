@@ -1,4 +1,4 @@
-import type { CanonicalExtract } from "./model.js";
+import type { CanonicalExtract } from "./model";
 
 /** Interface only — implementations live in @congruo/db (fs, S3). Defined here
  * so adapters depend on core, never on db. */

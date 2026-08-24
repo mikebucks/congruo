@@ -11,8 +11,11 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "@types/node": "catalog:"
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@congruo/core": "workspace:*"
   }
 }

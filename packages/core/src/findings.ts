@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { fingerprint } from "./identity.js";
-import type { CanonicalGraph, MappingSetRevision } from "./model.js";
-import type { ComponentRef, Loc, TokenRef } from "./refs.js";
-import { tokenKey } from "./refs.js";
+import { fingerprint } from "./identity";
+import type { CanonicalGraph, MappingSetRevision } from "./model";
+import type { ComponentRef, Loc, TokenRef } from "./refs";
+import { tokenKey } from "./refs";
 
 export type Dimension = "parity" | "complexity" | "adoption" | "documentation";
 export type Severity = "info" | "warn" | "error";

@@ -1,1 +1,1 @@
-export const packageName = "@congruo/ingest-code";
+export { CodeAdapter, type CodeConfig } from "./adapter";

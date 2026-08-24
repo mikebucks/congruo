@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
-import { createFinding } from "./findings.js";
-import type { CodeLoc, ComponentRef } from "./refs.js";
-import { refKey, sameRef } from "./refs.js";
+import { createFinding } from "./findings";
+import type { CodeLoc, ComponentRef } from "./refs";
+import { refKey, sameRef } from "./refs";
 
 const button: ComponentRef = {
   kind: "code",

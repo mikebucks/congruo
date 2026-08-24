@@ -1,0 +1,9 @@
+{
+  "name": "acme-fixture",
+  "private": true,
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "react": "^19.2.8",
+    "typescript": "^5.9.3"
+  }
+}

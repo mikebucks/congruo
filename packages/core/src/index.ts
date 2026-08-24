@@ -1,4 +1,4 @@
-export type { BlobStore, SourceAdapter } from "./adapter.js";
+export type { BlobStore, SourceAdapter } from "./adapter";
 export {
   type Analyzer,
   type CreateFindingInput,
@@ -8,8 +8,14 @@ export {
   type FindingType,
   findingRegistry,
   type Severity,
-} from "./findings.js";
-export { FINGERPRINT_VERSION, fingerprint } from "./identity.js";
+} from "./findings";
+export { FINGERPRINT_VERSION, fingerprint } from "./identity";
+export {
+  AUTO_THRESHOLD,
+  type MatchResult,
+  normalizeName,
+  proposeMappings,
+} from "./matcher/index";
 export type {
   CanonicalExtract,
   CanonicalGraph,
@@ -24,7 +30,7 @@ export type {
   SourceArtifact,
   TokenDefinition,
   TokenMapping,
-} from "./model.js";
+} from "./model";
 export {
   type CodeLoc,
   type ComponentRef,
@@ -35,4 +41,4 @@ export {
   sameRef,
   type TokenRef,
   tokenKey,
-} from "./refs.js";
+} from "./refs";

@@ -1,4 +1,4 @@
-import type { CodeLoc, ComponentRef, Loc, TokenRef } from "./refs.js";
+import type { CodeLoc, ComponentRef, Loc, TokenRef } from "./refs";
 
 export interface SourceArtifact {
   id: string;

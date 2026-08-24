@@ -3,13 +3,13 @@ import type { CanonicalGraph, MappingSetRevision } from "@congruo/core";
 import { FINGERPRINT_VERSION } from "@congruo/core";
 import { desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { FsBlobStore } from "./blob-store.js";
-import * as schema from "./schema.js";
-import { createTestDb } from "./test-db.js";
+import { FsBlobStore } from "./blob-store";
+import * as schema from "./schema";
+import { createTestDb } from "./test-db";
 
 let ctx: Awaited<ReturnType<typeof createTestDb>>;
 beforeAll(async () => {
-  ctx = await createTestDb();
+  ctx = await createTestDb("congruo_test_snapshots");
 });
 afterAll(() => ctx.close());
 
