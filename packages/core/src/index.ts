@@ -1,6 +1,7 @@
 export type { BlobStore, SourceAdapter } from "./adapter";
 export {
   type Analyzer,
+  type AnalyzerConfig,
   type CreateFindingInput,
   createFinding,
   type Dimension,
@@ -9,6 +10,14 @@ export {
   findingRegistry,
   type Severity,
 } from "./findings";
+export {
+  type PairedComponent,
+  pairComponents,
+  pairUsage,
+  type UsageStats,
+  usageStats,
+  variantCombinations,
+} from "./graph";
 export { FINGERPRINT_VERSION, fingerprint } from "./identity";
 export {
   AUTO_THRESHOLD,

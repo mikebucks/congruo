@@ -1,56 +1,71 @@
 {
-  "description": "Gold-corpus labels: every seeded issue in acme-ds by finding type. P/R per type is measured against this file (M3+). Negative controls listed to catch false positives.",
-  "expected": [
+  "description": "Gold-corpus truth: exact expected findings when the CodeAdapter extract is analyzed with an empty Figma side and no statuses. The P/R gate asserts these types match EXACTLY — a miss is a recall bug, an extra is a precision bug. MISSING_IN_FIGMA is excluded (trivially every component, verified by unit tests).",
+  "expected": {
+    "HARDCODED_VALUE_CODE": [
+      {
+        "component": "Button",
+        "note": "#ff5733 borderColor, aggregated to one finding"
+      }
+    ],
+    "REDUNDANT_COMPONENT": [
+      {
+        "component": "ButtonNew",
+        "note": "near-duplicate of Button, lands on the lesser-used side"
+      }
+    ],
+    "UNUSED_PROP": [
+      { "component": "Tag", "note": "rounded never set" },
+      { "component": "Banner", "note": "dismissible never set" },
+      {
+        "component": "Badge",
+        "note": "tone never set (stories are not usages)"
+      }
+    ],
+    "UNUSED_COMPONENT": [
+      { "component": "Stepper", "note": "zero usages" },
+      { "component": "ButtonNew", "note": "zero usages" }
+    ],
+    "SINGLE_FILE_ADOPTION": [
+      { "component": "Card", "note": "2 usages, both in Home.tsx" }
+    ],
+    "NO_STORY": [
+      { "component": "Banner" },
+      { "component": "Button" },
+      { "component": "ButtonNew" },
+      { "component": "Card" },
+      { "component": "Input" },
+      { "component": "Stepper" },
+      { "component": "Tag" }
+    ],
+    "PROPS_UNDOCUMENTED": [
+      { "component": "Banner", "note": "no JSDoc at all" },
+      { "component": "Button", "note": "label lacks JSDoc" },
+      { "component": "ButtonNew" },
+      { "component": "Card" },
+      { "component": "Stepper" }
+    ],
+    "NO_USAGE_GUIDANCE": [
+      { "component": "Banner" },
+      { "component": "Button" },
+      { "component": "ButtonNew" },
+      { "component": "Card" },
+      { "component": "Input" },
+      { "component": "Tag" }
+    ]
+  },
+  "negativeControls": [
     {
-      "type": "HARDCODED_VALUE_CODE",
-      "component": "Button",
-      "note": "#ff5733 borderColor in Button.tsx"
+      "component": "Badge",
+      "note": "documented + storied + used: only UNUSED_PROP(tone)"
     },
+    { "component": "Button", "note": "used in 2 files: no adoption findings" },
     {
-      "type": "HARDCODED_VALUE_CODE",
-      "component": "LocalBadge",
-      "note": "#123456 in app LocalBadge — counts only if local components are scanned (coverage), never as a DS finding"
-    },
-    {
-      "type": "REDUNDANT_COMPONENT",
-      "component": "ButtonNew",
-      "note": "near-duplicate of Button; must also stay unmatched from Figma Button (M3)"
-    },
-    {
-      "type": "UNUSED_PROP",
-      "component": "Tag",
-      "note": "prop 'rounded' never set in any observed usage (M3)"
-    },
-    {
-      "type": "UNUSED_COMPONENT",
-      "component": "Stepper",
-      "note": "exported, zero usages"
-    },
-    {
-      "type": "NO_STORY",
-      "component": "Banner",
-      "note": "no .stories.* file (M3)"
-    },
-    {
-      "type": "PROPS_UNDOCUMENTED",
-      "component": "Banner",
-      "note": "no JSDoc on any prop (M3)"
-    },
-    {
-      "type": "SINGLE_FILE_ADOPTION",
-      "component": "Card",
-      "note": "used only in Home.tsx (M3)"
+      "component": "Input",
+      "note": "fully documented props: no PROPS_UNDOCUMENTED"
     }
   ],
   "propMappingCases": [
     { "figma": "Disabled", "code": "isDisabled", "component": "Input" },
     { "figma": "Size=lg", "code": "size=\"lg\"", "component": "Input" }
-  ],
-  "negativeControls": [
-    { "component": "Badge", "note": "documented + storied: no docs findings" },
-    {
-      "component": "Button",
-      "note": "used in 2 files: no adoption findings"
-    }
   ]
 }

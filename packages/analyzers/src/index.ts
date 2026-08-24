@@ -1,12 +1,15 @@
 import type { Analyzer, Finding } from "@congruo/core";
-import { unusedComponent } from "./adoption";
+import { adoption } from "./adoption";
+import { complexity } from "./complexity";
+import { documentation } from "./documentation";
 import { applyStatusGating } from "./gating";
-import { hardcodedValueCode, missingInCode } from "./parity";
+import { parity } from "./parity";
 
 export const analyzers: Analyzer[] = [
-  missingInCode,
-  hardcodedValueCode,
-  unusedComponent,
+  parity,
+  complexity,
+  adoption,
+  documentation,
 ];
 
 export const runAnalyzers: Analyzer = (graph, mappings, config) => {
@@ -17,6 +20,8 @@ export const runAnalyzers: Analyzer = (graph, mappings, config) => {
   return applyStatusGating(findings, mappings);
 };
 
-export { unusedComponent } from "./adoption";
+export { adoption } from "./adoption";
+export { complexity } from "./complexity";
+export { documentation } from "./documentation";
 export { applyStatusGating } from "./gating";
-export { hardcodedValueCode, missingInCode } from "./parity";
+export { parity } from "./parity";

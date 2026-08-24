@@ -41,6 +41,7 @@ test("fingerprints are stable across constructions", () => {
       evidence: {
         value: "#ff0000",
         property: "background",
+        occurrences: 1,
         matchingToken: null,
       },
       locations: [loc(10, "aaa")],
@@ -56,6 +57,7 @@ test("fingerprints are invariant under location shifts", () => {
       evidence: {
         value: "#ff0000",
         property: "background",
+        occurrences: 1,
         matchingToken: null,
       },
       locations: [loc(line, sha)],
@@ -67,19 +69,34 @@ test("fingerprints differ across types, subjects, and discriminators", () => {
   const base = createFinding({
     type: "HARDCODED_VALUE_CODE",
     subjectRef: button,
-    evidence: { value: "#ff0000", property: "background", matchingToken: null },
+    evidence: {
+      value: "#ff0000",
+      property: "background",
+      occurrences: 1,
+      matchingToken: null,
+    },
     locations: [],
   });
   const otherValue = createFinding({
     type: "HARDCODED_VALUE_CODE",
     subjectRef: button,
-    evidence: { value: "#00ff00", property: "background", matchingToken: null },
+    evidence: {
+      value: "#00ff00",
+      property: "background",
+      occurrences: 1,
+      matchingToken: null,
+    },
     locations: [],
   });
   const otherSubject = createFinding({
     type: "HARDCODED_VALUE_CODE",
     subjectRef: { ...button, exportSymbol: "Tag" },
-    evidence: { value: "#ff0000", property: "background", matchingToken: null },
+    evidence: {
+      value: "#ff0000",
+      property: "background",
+      occurrences: 1,
+      matchingToken: null,
+    },
     locations: [],
   });
   expect(base.fingerprint).not.toBe(otherValue.fingerprint);

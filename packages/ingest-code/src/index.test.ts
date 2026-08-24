@@ -92,8 +92,8 @@ test("usage census: DS, local components, and raw styled elements", async () => 
   );
   const raw = out.usages.filter((u) => u.kind === "styled-element");
 
-  // Home: Card + 2 Button; Settings: Banner, Input, Tag, Badge, Button
-  expect(ds).toHaveLength(8);
+  // Home: 2 Card + 2 Button; Settings: Banner, Input, Tag, Badge, Button
+  expect(ds).toHaveLength(9);
   expect(local.map((u) => u.name)).toEqual(["LocalBadge"]);
   expect(raw).toHaveLength(2); // span in LocalBadge.tsx + span in Settings.tsx
 

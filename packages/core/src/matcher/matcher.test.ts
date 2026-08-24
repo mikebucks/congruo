@@ -134,18 +134,39 @@ test('prop matching: isDisabled↔Disabled, Size=lg↔size="lg" with value synon
       Disabled: ["false", "true"],
       Size: ["Small", "Medium", "Large"],
     },
-    props: [{ name: "Label", type: "text", values: [], required: false }],
+    props: [
+      {
+        name: "Label",
+        type: "text",
+        values: [],
+        required: false,
+        documented: false,
+      },
+    ],
   });
   const codeDef = def(codeRef("Input"), "Input", {
     props: [
-      { name: "isDisabled", type: "boolean", values: [], required: false },
+      {
+        name: "isDisabled",
+        type: "boolean",
+        values: [],
+        required: false,
+        documented: false,
+      },
       {
         name: "size",
         type: "enum",
         values: ["sm", "md", "lg"],
         required: false,
+        documented: false,
       },
-      { name: "label", type: "string", values: [], required: true },
+      {
+        name: "label",
+        type: "string",
+        values: [],
+        required: true,
+        documented: false,
+      },
     ],
   });
   const props = matchProps(figmaDef, codeDef);

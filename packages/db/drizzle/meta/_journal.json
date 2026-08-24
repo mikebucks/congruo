@@ -15,6 +15,20 @@
       "when": 1787607585715,
       "tag": "0001_green_komodo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787608973996,
+      "tag": "0002_legal_nightshade",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787608986643,
+      "tag": "0003_moaning_champions",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,8 @@ export interface PropDef {
   type: string;
   values: string[];
   required: boolean;
+  /** Has a description (JSDoc / Figma property description). */
+  documented: boolean;
 }
 
 export interface ComponentDefinition {

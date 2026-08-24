@@ -140,6 +140,7 @@ function extractDefinitions(
         type: p.type.name,
         values: literalValues(p.type),
         required: p.required,
+        documented: p.description.length > 0,
       }));
       if (props.length === 0) {
         out.diagnostics.push({

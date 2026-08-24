@@ -3,6 +3,7 @@ import { runAnalyzers } from "@congruo/analyzers";
 import type {
   BlobStore,
   CanonicalGraph,
+  Dimension,
   MappingSetRevision,
 } from "@congruo/core";
 import {
@@ -16,7 +17,7 @@ import type { Db } from "@congruo/db";
 import { decryptToken, schema } from "@congruo/db";
 import { CodeAdapter, type CodeConfig } from "@congruo/ingest-code";
 import { FigmaAdapter, type FigmaConfig } from "@congruo/ingest-figma";
-import { computeCoverage } from "@congruo/scoring";
+import { computeCoverage, computeScores, rubric } from "@congruo/scoring";
 import { desc, eq, inArray } from "drizzle-orm";
 
 export interface AuditDeps {
@@ -129,8 +130,9 @@ async function runPipeline(
     tokenMappings: [...userSet.tokenMappings, ...autoTokens],
   };
 
-  // 3. Analyze
+  // 3. Analyze + score
   const findings = runAnalyzers(graph, effective, {});
+  const scoreSet = computeScores(graph, effective, findings);
 
   // 4. firstSeenSnapshot from prior occurrences in this workspace
   const priorSnapshots = await db
@@ -169,8 +171,9 @@ async function runPipeline(
       fingerprintVersion: FINGERPRINT_VERSION,
       mappingSet: effective,
       analyzerConfig: {},
-      rubric: {},
+      rubric: rubric as unknown as Record<string, unknown>,
       coverage: computeCoverage(graph) as unknown as Record<string, unknown>,
+      topline: scoreSet.topline,
     });
     await tx.insert(schema.snapshotSources).values(
       [...figma.artifacts, ...code.artifacts].map((artifact) => ({
@@ -179,6 +182,28 @@ async function runPipeline(
       })),
     );
     await tx.insert(schema.snapshotGraphs).values({ snapshotId, graph });
+    await tx.insert(schema.scores).values([
+      ...scoreSet.components.flatMap((c) =>
+        (Object.entries(c.scores) as [Dimension, number | null][]).map(
+          ([dimension, score]) => ({
+            snapshotId,
+            subjectRefKey: c.subjectRefKey,
+            name: c.name,
+            usageTotal: c.usageTotal,
+            dimension,
+            score,
+          }),
+        ),
+      ),
+      ...(Object.entries(scoreSet.system) as [Dimension, number | null][]).map(
+        ([dimension, score]) => ({
+          snapshotId,
+          subjectRefKey: null,
+          dimension,
+          score,
+        }),
+      ),
+    ]);
     if (findings.length > 0) {
       await tx.insert(schema.findingOccurrences).values(
         findings.map((f) => ({

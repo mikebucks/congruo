@@ -87,6 +87,8 @@ export const snapshots = pgTable("snapshots", {
   rubric: jsonb("rubric").notNull().$type<Record<string, unknown>>(),
   /** Frozen coverage read model (CoverageSummary from @congruo/scoring). */
   coverage: jsonb("coverage").$type<Record<string, unknown>>(),
+  /** System topline score (coverage-weighted mean across dimensions). */
+  topline: real("topline"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -128,6 +130,8 @@ export const scores = pgTable("scores", {
     .references(() => snapshots.id),
   /** null = system-level rollup. */
   subjectRefKey: text("subject_ref_key"),
+  name: text("name"),
+  usageTotal: integer("usage_total"),
   dimension: text("dimension").notNull().$type<Dimension>(),
   /** null = unassessed (dimension not fully evaluated). */
   score: real("score"),

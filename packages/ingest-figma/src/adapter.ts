@@ -190,6 +190,7 @@ function splitPropDefs(node: FigmaNode): {
         type: def.type.toLowerCase(),
         values: [],
         required: false,
+        documented: false,
       });
     }
   }

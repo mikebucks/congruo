@@ -57,6 +57,11 @@ export default async function Report({
   const sources = await db().query.snapshotSources.findMany({
     where: eq(schema.snapshotSources.snapshotId, snapshotId),
   });
+  const systemScores = (
+    await db().query.scores.findMany({
+      where: eq(schema.scores.snapshotId, snapshotId),
+    })
+  ).filter((s) => s.subjectRefKey === null);
   const findings = await db().query.findingOccurrences.findMany({
     where: eq(schema.findingOccurrences.snapshotId, snapshotId),
   });
@@ -76,6 +81,29 @@ export default async function Report({
         {snapshot.createdAt.toISOString().slice(0, 16).replace("T", " ")} ·{" "}
         {findings.length} findings · fingerprint v{snapshot.fingerprintVersion}
       </p>
+
+      {typeof snapshot.topline === "number" && (
+        <div className="mt-6 flex items-end gap-6">
+          <div>
+            <div className="text-xs text-neutral-500">System health</div>
+            <div className="text-5xl font-semibold tabular-nums">
+              {Math.round(snapshot.topline)}
+            </div>
+          </div>
+          <div className="flex gap-4 pb-1">
+            {systemScores.map((s) => (
+              <div key={s.dimension}>
+                <div className="text-xs capitalize text-neutral-500">
+                  {s.dimension}
+                </div>
+                <div className="text-xl font-medium tabular-nums">
+                  {s.score === null ? "—" : Math.round(s.score)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {snapshot.coverage && (
         <CoverageBlock
