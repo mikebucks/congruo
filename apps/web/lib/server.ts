@@ -1,4 +1,5 @@
-import { createDb, type Db, parseEncKey } from "@congruo/db";
+import { isAbsolute, resolve } from "node:path";
+import { createDb, type Db, FsBlobStore, parseEncKey } from "@congruo/db";
 import { PgBoss } from "pg-boss";
 
 try {
@@ -27,6 +28,13 @@ export function encKeys(): Record<number, Buffer> {
   const v1 = process.env.TOKEN_ENC_KEY_V1;
   if (!v1) throw new Error("TOKEN_ENC_KEY_V1 not set");
   return { 1: parseEncKey(v1) };
+}
+
+export function blobs(): FsBlobStore {
+  const dir = process.env.BLOB_DIR ?? ".data/blobs";
+  return new FsBlobStore(
+    isAbsolute(dir) ? dir : resolve(process.cwd(), "../..", dir),
+  );
 }
 
 export async function boss(): Promise<PgBoss> {

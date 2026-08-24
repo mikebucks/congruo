@@ -1,5 +1,7 @@
+import { isAbsolute, resolve } from "node:path";
 import { createDb, FsBlobStore, parseEncKey } from "@congruo/db";
 import { PgBoss } from "pg-boss";
+import { exportPdf } from "./pdf";
 import { executeAuditRun } from "./pipeline";
 
 try {
@@ -15,8 +17,26 @@ if (!databaseUrl || !encKeyV1) {
 }
 
 const db = createDb(databaseUrl);
-const blobs = new FsBlobStore(process.env.BLOB_DIR ?? ".data/blobs");
+const blobDir = process.env.BLOB_DIR ?? ".data/blobs";
+const blobs = new FsBlobStore(
+  isAbsolute(blobDir) ? blobDir : resolve(process.cwd(), "../..", blobDir),
+);
 const encKeys = { 1: parseEncKey(encKeyV1) };
+
+// Recovery sweep: a crashed run must not leave source checkouts behind.
+import { readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+
+try {
+  for (const entry of await readdir(tmpdir())) {
+    if (entry.startsWith("congruo-clone-")) {
+      await rm(resolve(tmpdir(), entry), { recursive: true, force: true });
+      console.log(`swept orphaned checkout ${entry}`);
+    }
+  }
+} catch (e) {
+  console.error("clone sweep failed:", e);
+}
 
 const boss = new PgBoss({ connectionString: databaseUrl });
 boss.on("error", (e) => console.error("pg-boss:", e));
@@ -36,5 +56,22 @@ await boss.work<{ runId: string }>("audit", async ([job]) => {
   );
   console.log(`audit run ${job.data.runId} sealed snapshot ${snapshotId}`);
 });
+
+await boss.createQueue("export-pdf", { retryLimit: 1, expireInSeconds: 600 });
+await boss.work<{ snapshotId: string; token: string; tokenHash: string }>(
+  "export-pdf",
+  async ([job]) => {
+    if (!job) return;
+    const key = await exportPdf(
+      {
+        db,
+        blobs,
+        webBaseUrl: process.env.WEB_BASE_URL ?? "http://localhost:3000",
+      },
+      job.data,
+    );
+    console.log(`pdf exported: ${key}`);
+  },
+);
 
 console.log("congruo worker: listening on queue 'audit'");

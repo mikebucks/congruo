@@ -21,15 +21,21 @@ export const parity: Analyzer = (graph, mappings) => {
   for (const pair of pairs) {
     // component-level presence
     if (pair.figmaDef && !pair.codeDef && !pair.mapping) {
+      const def = pair.figmaDef;
+      // No variants and no props = usually an icon/asset, not a component
+      // anyone expects 1:1 in code. Conservative severity keeps trust.
+      const hasApi =
+        Object.keys(def.variants).length > 0 || def.props.length > 0;
       findings.push(
         createFinding({
           type: "MISSING_IN_CODE",
-          subjectRef: pair.figmaDef.ref,
+          subjectRef: def.ref,
           evidence: {
-            figmaName: pair.figmaDef.name,
-            variantCount: variantCombinations(pair.figmaDef),
+            figmaName: def.name,
+            variantCount: variantCombinations(def),
           },
           locations: [],
+          severity: hasApi ? "warn" : "info",
         }),
       );
     }
@@ -151,6 +157,15 @@ function tokenParity(
   return findings;
 }
 
+const SOFT_PROPERTIES = new Set([
+  "paddingLeft",
+  "paddingRight",
+  "paddingTop",
+  "paddingBottom",
+  "itemSpacing",
+  "fontSize",
+]);
+
 /** Aggregated per (component, property, value); evidence carries the matching
  * token when a token definition's value equals the hardcoded value. */
 function hardcodedValues(graph: Parameters<Analyzer>[0]): Finding[] {
@@ -191,6 +206,9 @@ function hardcodedValues(graph: Parameters<Analyzer>[0]): Finding[] {
                 tokensByValue.get(g.value.toLowerCase())?.ref ?? null,
             },
             locations: g.locations.slice(0, 10),
+            // raw spacing/typography is weaker drift evidence than raw color —
+            // many teams never tokenize every padding (M4 gate review)
+            severity: SOFT_PROPERTIES.has(g.property) ? "info" : "warn",
           }),
         );
       }

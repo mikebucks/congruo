@@ -46,18 +46,34 @@ export async function executeAuditRun(
   });
   if (existing) return { snapshotId: existing.id };
 
+  if (run.status === "cancelled") return { snapshotId: "" };
+
   await setStatus(db, runId, "running");
   try {
     const result = await runPipeline(deps, run.workspaceId, runId);
     await setStatus(db, runId, "succeeded");
     return result;
   } catch (e) {
+    if (e instanceof RunCancelled) {
+      return { snapshotId: "" }; // status already cancelled; nothing sealed
+    }
     await db
       .update(schema.auditRuns)
       .set({ status: "failed", error: String(e), updatedAt: new Date() })
       .where(eq(schema.auditRuns.id, runId));
     throw e;
   }
+}
+
+class RunCancelled extends Error {}
+
+/** Checked between pipeline stages: a user cancel takes effect before the
+ * next expensive step and always before sealing. */
+async function assertNotCancelled(db: Db, runId: string): Promise<void> {
+  const run = await db.query.auditRuns.findFirst({
+    where: eq(schema.auditRuns.id, runId),
+  });
+  if (run?.status === "cancelled") throw new RunCancelled();
 }
 
 async function setStatus(
@@ -100,6 +116,7 @@ async function runPipeline(
     { blobs },
   );
   const graph: CanonicalGraph = { figma, code };
+  await assertNotCancelled(db, runId);
 
   // 2. Effective mapping set: user revision wins, confident auto-proposals fill gaps
   const userRevision = await db.query.mappingSetRevisions.findFirst({
@@ -160,6 +177,7 @@ async function runPipeline(
     }
   }
 
+  await assertNotCancelled(db, runId);
   // 5. Seal atomically — blob writes already completed during ingest
   const snapshotId = randomUUID();
   await db.transaction(async (tx) => {

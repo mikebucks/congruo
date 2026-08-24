@@ -205,6 +205,25 @@ test("M2 gate: user override + status respected in new snapshot, absent from old
   expect(oldAgain?.mappingSet.statuses).toEqual([]);
 });
 
+test("a cancelled run seals nothing and stays cancelled", async () => {
+  await createRun("run-cancel");
+  await ctx.db
+    .update(schema.auditRuns)
+    .set({ status: "cancelled" })
+    .where(eq(schema.auditRuns.id, "run-cancel"));
+
+  const { snapshotId } = await executeAuditRun(deps(), "run-cancel");
+  expect(snapshotId).toBe("");
+  const run = await ctx.db.query.auditRuns.findFirst({
+    where: eq(schema.auditRuns.id, "run-cancel"),
+  });
+  expect(run?.status).toBe("cancelled");
+  const snapshot = await ctx.db.query.snapshots.findFirst({
+    where: eq(schema.snapshots.runId, "run-cancel"),
+  });
+  expect(snapshot).toBeUndefined();
+});
+
 test("mid-run failure marks the run failed and seals nothing", async () => {
   const failing: typeof fetch = async () => {
     throw new Error("network died");

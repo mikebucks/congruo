@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { encryptToken, schema } from "@congruo/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { boss, db, encKeys } from "../lib/server";
 
@@ -49,6 +50,20 @@ export async function saveConnections(formData: FormData) {
         },
       },
     ]);
+  redirect("/");
+}
+
+export async function cancelRun(formData: FormData) {
+  const runId = String(formData.get("runId"));
+  await db()
+    .update(schema.auditRuns)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.auditRuns.id, runId),
+        inArray(schema.auditRuns.status, ["queued", "running"]),
+      ),
+    );
   redirect("/");
 }
 
