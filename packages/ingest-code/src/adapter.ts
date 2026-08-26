@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import type {
   BlobStore,
@@ -24,12 +24,22 @@ export interface TokenPatterns {
   tailwindPrefixes?: string[];
 }
 
+export interface DsPackageConfig {
+  /** Import specifier the app uses, e.g. "@acme/ui". */
+  name: string;
+  srcGlob: string;
+  /** How definitions are extracted. "react-tsx" = docgen over component
+   * source; "svg-assets" = each SVG file is an asset definition (svgr-style
+   * icon packages). Default: "react-tsx". */
+  strategy?: "react-tsx" | "svg-assets";
+}
+
 export interface CodeConfig {
   /** Local checkout root — see clone.ts for the clone-at-SHA wrapper. */
   rootDir: string;
   repo: string;
   sha: string;
-  dsPackage: { name: string; srcGlob: string };
+  dsPackages: DsPackageConfig[];
   appGlob: string;
   tokenPatterns?: TokenPatterns;
 }
@@ -53,56 +63,99 @@ export class CodeAdapter implements SourceAdapter<CodeConfig> {
       rawPayloadRefs: [],
     };
     const appArtifactId = `${config.repo}#app`;
-    out.artifacts.push(
-      {
-        id: config.dsPackage.name,
+    for (const pkg of config.dsPackages) {
+      out.artifacts.push({
+        id: pkg.name,
         side: "code",
-        ref: { repo: config.repo, pkg: config.dsPackage.name },
+        ref: { repo: config.repo, pkg: pkg.name },
         version: config.sha,
         role: "ds-package",
-      },
-      {
-        id: appArtifactId,
-        side: "code",
-        ref: { repo: config.repo },
-        version: config.sha,
-        role: "app",
-      },
-    );
+      });
+    }
+    out.artifacts.push({
+      id: appArtifactId,
+      side: "code",
+      ref: { repo: config.repo },
+      version: config.sha,
+      role: "app",
+    });
 
     const project = new Project({
       skipFileDependencyResolution: true,
       compilerOptions: { allowJs: false },
     });
-    const dsSourceFiles = project.addSourceFilesAtPaths(
-      join(config.rootDir, config.dsPackage.srcGlob),
-    );
-    const storyBasenames = new Set(
-      dsSourceFiles
-        .map((f) => basename(f.getFilePath()))
-        .filter((n) => /\.(stories|story)\.[jt]sx?$/.test(n))
-        .map((n) => n.replace(/\.(stories|story)\.[jt]sx?$/, "")),
-    );
-    const dsFiles = dsSourceFiles
-      .map((f) => f.getFilePath() as string)
-      .filter(
-        (p) =>
-          !p.endsWith("index.ts") && !/\.(stories|story)\.[jt]sx?$/.test(p),
+    for (const pkg of config.dsPackages) {
+      if (pkg.strategy === "svg-assets") {
+        extractSvgAssets(config, pkg, out);
+        continue;
+      }
+      const dsSourceFiles = project.addSourceFilesAtPaths(
+        join(config.rootDir, pkg.srcGlob),
       );
-
-    extractDefinitions(config, dsFiles, storyBasenames, out);
+      const storyBasenames = new Set(
+        dsSourceFiles
+          .map((f) => basename(f.getFilePath()))
+          .filter((n) => /\.(stories|story)\.[jt]sx?$/.test(n))
+          .map((n) => n.replace(/\.(stories|story)\.[jt]sx?$/, "")),
+      );
+      const dsFiles = dsSourceFiles
+        .map((f) => f.getFilePath() as string)
+        .filter(
+          (p) =>
+            !p.endsWith("index.ts") && !/\.(stories|story)\.[jt]sx?$/.test(p),
+        );
+      extractDefinitions(config, pkg, dsFiles, storyBasenames, out);
+    }
     extractUsages(config, project, appArtifactId, out);
     return out;
   }
 }
 
+/** svgr-style asset packages: every SVG is a definition named by its file.
+ * Assets match and count toward adoption; they are not documentation-judged. */
+function extractSvgAssets(
+  config: CodeConfig,
+  pkg: DsPackageConfig,
+  out: CanonicalExtract,
+): void {
+  const files = globSync(pkg.srcGlob, { cwd: config.rootDir }).sort();
+  for (const file of files) {
+    const name = basename(file).replace(/\.svg$/i, "");
+    out.definitions.push({
+      ref: {
+        kind: "code",
+        repo: config.repo,
+        pkg: pkg.name,
+        exportSymbol: name,
+        filePath: file,
+      },
+      artifactId: pkg.name,
+      name,
+      kind: "asset",
+      props: [],
+      variants: {},
+      tokensUsed: [],
+      hardcodedValues: [],
+      docs: { storyExists: false, propsDocumented: false, usageProse: null },
+    });
+  }
+  if (files.length === 0) {
+    out.diagnostics.push({
+      artifactId: pkg.name,
+      kind: "skipped-file",
+      detail: `svg-assets glob matched no files: ${pkg.srcGlob}`,
+    });
+  }
+}
+
 function extractDefinitions(
   config: CodeConfig,
+  pkg: DsPackageConfig,
   dsFiles: string[],
   storyBasenames: Set<string>,
   out: CanonicalExtract,
 ): void {
-  const parser = makeParser(config, out);
+  const parser = makeParser(config, pkg, out);
   const docs = parser.parse(dsFiles);
   const patterns = { ...DEFAULT_PATTERNS, ...config.tokenPatterns };
 
@@ -111,7 +164,7 @@ function extractDefinitions(
   for (const doc of docs) {
     if (seenNames.has(doc.displayName)) {
       out.diagnostics.push({
-        artifactId: config.dsPackage.name,
+        artifactId: pkg.name,
         kind: "unsupported-pattern",
         detail: `DUPLICATE_COMPONENT_NAME: ${doc.displayName}`,
       });
@@ -144,7 +197,7 @@ function extractDefinitions(
       }));
       if (props.length === 0) {
         out.diagnostics.push({
-          artifactId: config.dsPackage.name,
+          artifactId: pkg.name,
           kind: "unsupported-pattern",
           detail: `PROPS_ALL_INHERITED_OR_NONE: ${doc.displayName} (${relPath})`,
         });
@@ -153,11 +206,11 @@ function extractDefinitions(
         ref: {
           kind: "code",
           repo: config.repo,
-          pkg: config.dsPackage.name,
+          pkg: pkg.name,
           exportSymbol: doc.displayName,
           filePath: relPath,
         },
-        artifactId: config.dsPackage.name,
+        artifactId: pkg.name,
         name: doc.displayName,
         props,
         variants: {},
@@ -176,12 +229,16 @@ function extractDefinitions(
   out.tokens.push(
     ...[...seenTokens.values()].map((ref) => ({
       ref,
-      artifactId: config.dsPackage.name,
+      artifactId: pkg.name,
     })),
   );
 }
 
-function makeParser(config: CodeConfig, out: CanonicalExtract) {
+function makeParser(
+  config: CodeConfig,
+  pkg: DsPackageConfig,
+  out: CanonicalExtract,
+) {
   const opts = {
     shouldExtractLiteralValuesFromEnum: true,
     propFilter: (prop: { parent?: { fileName: string } }) =>
@@ -191,7 +248,7 @@ function makeParser(config: CodeConfig, out: CanonicalExtract) {
     return withCustomConfig(join(config.rootDir, "tsconfig.json"), opts);
   } catch (e) {
     out.diagnostics.push({
-      artifactId: config.dsPackage.name,
+      artifactId: pkg.name,
       kind: "parse-error",
       detail: `TSCONFIG_UNRESOLVED: ${String(e).slice(0, 200)} — using default compiler options`,
     });
@@ -289,14 +346,16 @@ function extractUsages(
   );
   for (const file of appFiles) {
     const relPath = relative(config.rootDir, file.getFilePath());
-    const dsImports = new Map<string, string>();
+    const packageNames = new Set(config.dsPackages.map((p) => p.name));
+    const dsImports = new Map<string, { pkg: string; exportSymbol: string }>();
     for (const imp of file.getImportDeclarations()) {
-      if (imp.getModuleSpecifierValue() !== config.dsPackage.name) continue;
+      const spec = imp.getModuleSpecifierValue();
+      if (!packageNames.has(spec)) continue;
       for (const named of imp.getNamedImports()) {
-        dsImports.set(
-          named.getAliasNode()?.getText() ?? named.getName(),
-          named.getName(),
-        );
+        dsImports.set(named.getAliasNode()?.getText() ?? named.getName(), {
+          pkg: spec,
+          exportSymbol: named.getName(),
+        });
       }
     }
 
@@ -323,14 +382,14 @@ function extractUsages(
       if (!isComponent && !styled) continue; // plain host element: not tracked
 
       const { line, column } = file.getLineAndColumnAtPos(jsx.getStart());
-      const exportSymbol = isComponent ? dsImports.get(tag) : undefined;
+      const dsImport = isComponent ? dsImports.get(tag) : undefined;
       out.usages.push({
-        definitionRef: exportSymbol
+        definitionRef: dsImport
           ? {
               kind: "code",
               repo: config.repo,
-              pkg: config.dsPackage.name,
-              exportSymbol,
+              pkg: dsImport.pkg,
+              exportSymbol: dsImport.exportSymbol,
               filePath: "",
             }
           : null,

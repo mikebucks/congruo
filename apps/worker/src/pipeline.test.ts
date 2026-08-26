@@ -51,10 +51,17 @@ beforeAll(async () => {
         rootDir: acmeRoot,
         repo: "acme/acme-ds",
         sha: "local",
-        dsPackage: {
-          name: "@acme/ui",
-          srcGlob: "packages/ui/src/**/*.{ts,tsx}",
-        },
+        dsPackages: [
+          {
+            name: "@acme/ui",
+            srcGlob: "packages/ui/src/**/*.{ts,tsx}",
+          },
+          {
+            name: "@acme/icons",
+            srcGlob: "packages/icons/*.svg",
+            strategy: "svg-assets" as const,
+          },
+        ],
         appGlob: "app/src/**/*.tsx",
       },
     },
@@ -103,8 +110,8 @@ test("full pipeline seals a snapshot with findings from all three analyzers", as
   const sources = await ctx.db.query.snapshotSources.findMany({
     where: eq(schema.snapshotSources.snapshotId, snapshotId),
   });
-  // LIB + CONSUMER figma files, ds-package + app code artifacts
-  expect(sources).toHaveLength(4);
+  // LIB + CONSUMER figma files, two ds-package + app code artifacts
+  expect(sources).toHaveLength(5);
 });
 
 test("re-executing a sealed run returns the same snapshot — no duplicates", async () => {

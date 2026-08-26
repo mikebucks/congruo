@@ -55,6 +55,42 @@ test("normalization strips DS prefixes and punctuation", () => {
   expect(normalizeName("Button / Primary")).toBe("buttonprimary");
 });
 
+test("suffix rules: alert-circle ↔ AlertCircleIcon; bare 'Icon' survives", () => {
+  expect(normalizeName("AlertCircleIcon")).toBe("alertcircle");
+  expect(normalizeName("alert-circle")).toBe("alertcircle");
+  expect(normalizeName("Icon")).toBe("icon"); // remainder must stay non-empty
+});
+
+test("naming conventions are workspace config, not code", () => {
+  const config = {
+    stripPrefixes: ["Acme"],
+    stripSuffixes: ["Widget"],
+    valueSynonyms: [] as [string, string][],
+  };
+  expect(normalizeName("AcmeButtonWidget", config)).toBe("button");
+  // defaults do not know these conventions
+  expect(normalizeName("AcmeButtonWidget")).toBe("acmebuttonwidget");
+});
+
+test("icon set auto-matches at the exact tier via suffix normalization", () => {
+  const figma = extract({
+    definitions: [
+      def(figmaRef("k1"), "alert-circle"),
+      def(figmaRef("k2"), "alert-diamond"),
+    ],
+  });
+  const code = extract({
+    definitions: [
+      def(codeRef("AlertCircleIcon"), "AlertCircleIcon"),
+      def(codeRef("AlertDiamondIcon"), "AlertDiamondIcon"),
+    ],
+  });
+  const r = proposeMappings(figma, code);
+  expect(r.proposed).toHaveLength(2);
+  expect(r.proposed.every((m) => m.confidence >= 0.9)).toBe(true);
+  expect(r.unmatchedFigma).toEqual([]);
+});
+
 test("table-driven pairing: exact, prefixed, fuzzy tiers, ambiguity", () => {
   const figma = extract({
     definitions: [

@@ -5,8 +5,19 @@ import type {
   FindingType,
   MappingSetRevision,
 } from "@congruo/core";
-import { pairComponents, pairUsage, refKey, usageStats } from "@congruo/core";
-import { dimensionWeights, reachMultiplier, rubric } from "./rubric";
+import {
+  pairComponents,
+  pairUsage,
+  refKey,
+  resolveStatuses,
+  usageStats,
+} from "@congruo/core";
+import {
+  dimensionWeights,
+  reachMultiplier,
+  rubric,
+  severityWeights,
+} from "./rubric";
 
 export const DIMENSIONS: Dimension[] = [
   "parity",
@@ -36,9 +47,7 @@ export function computeScores(
 ): ScoreSet {
   const pairs = pairComponents(graph, mappings);
   const stats = usageStats(graph);
-  const statusByRef = new Map(
-    mappings.statuses.map((s) => [refKey(s.ref), s.status]),
-  );
+  const statuses = resolveStatuses(graph, mappings);
 
   // both sides of a pair roll up onto one canonical subject
   const canonical = new Map<string, string>();
@@ -60,9 +69,7 @@ export function computeScores(
     const key = refKey(pair.subjectRef);
     const usage = pairUsage(pair, stats);
     const usageTotal = usage.instances + usage.jsx;
-    const status =
-      statusByRef.get(key) ??
-      (pair.figmaDef && statusByRef.get(refKey(pair.figmaDef.ref)));
+    const status = statuses.get(key);
     const exempt = status === "new" || status === "experimental";
     const subjectFindings = findingsBySubject.get(key) ?? [];
 
@@ -70,7 +77,9 @@ export function computeScores(
     for (const dimension of DIMENSIONS) {
       const assessed =
         dimension === "documentation"
-          ? pair.codeDef !== undefined && !exempt
+          ? pair.codeDef !== undefined &&
+            pair.codeDef.kind !== "asset" &&
+            !exempt
           : dimension === "adoption"
             ? !exempt
             : true;
@@ -85,6 +94,7 @@ export function computeScores(
         if (!entry) continue;
         penalty +=
           entry.penalty *
+          severityWeights[f.severity] *
           (entry.reach === "usages" ? reachMultiplier(usageTotal) : 1);
       }
       scores[dimension] = Math.max(0, Math.round(100 - penalty));

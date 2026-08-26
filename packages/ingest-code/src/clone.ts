@@ -55,7 +55,7 @@ export async function cloneAndExtract(
         rootDir: dir,
         repo: repoIdentity(config.repoUrl),
         sha,
-        dsPackage: config.dsPackage,
+        dsPackages: config.dsPackages,
         appGlob: config.appGlob,
         tokenPatterns: config.tokenPatterns,
       },

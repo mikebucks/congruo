@@ -23,7 +23,11 @@
     ],
     "UNUSED_COMPONENT": [
       { "component": "Stepper", "note": "zero usages" },
-      { "component": "ButtonNew", "note": "zero usages" }
+      { "component": "ButtonNew", "note": "zero usages" },
+      {
+        "component": "CheckIcon",
+        "note": "svg asset, never imported (StarIcon is the used control)"
+      }
     ],
     "SINGLE_FILE_ADOPTION": [
       { "component": "Card", "note": "2 usages, both in Home.tsx" }

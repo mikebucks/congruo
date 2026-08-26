@@ -20,6 +20,8 @@ import {
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  /** Workspace conventions: matcher normalization rules, etc. */
+  settings: jsonb("settings").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

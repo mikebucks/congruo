@@ -4,6 +4,7 @@ import {
   pairComponents,
   pairUsage,
   refKey,
+  resolveStatuses,
   usageStats,
 } from "@congruo/core";
 
@@ -19,16 +20,12 @@ export const adoption: Analyzer = (graph, mappings) => {
     if (u.location.kind === "figma") figmaFiles.add(u.location.fileKey);
     else codeFiles.add(u.location.filePath);
   }
-  const statusByRef = new Map(
-    mappings.statuses.map((s) => [refKey(s.ref), s.status]),
-  );
+  const statuses = resolveStatuses(graph, mappings);
 
   for (const pair of pairComponents(graph, mappings)) {
     const { instances, jsx, files } = pairUsage(pair, stats);
     const total = instances + jsx;
-    const status =
-      statusByRef.get(refKey(pair.subjectRef)) ??
-      (pair.figmaDef && statusByRef.get(refKey(pair.figmaDef.ref)));
+    const status = statuses.get(refKey(pair.subjectRef));
 
     // Deprecated inverts adoption: usage IS the finding; disuse is success.
     if (status === "deprecated") {

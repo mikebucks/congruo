@@ -7,7 +7,10 @@ import type {
   MappingSetRevision,
 } from "@congruo/core";
 import {
+  applyIgnores,
+  DEFAULT_MATCHER_CONFIG,
   FINGERPRINT_VERSION,
+  type MatcherConfig,
   proposeMappings,
   proposeTokenMappings,
   refKey,
@@ -15,9 +18,19 @@ import {
 } from "@congruo/core";
 import type { Db } from "@congruo/db";
 import { decryptToken, schema } from "@congruo/db";
-import { CodeAdapter, type CodeConfig } from "@congruo/ingest-code";
+import {
+  type CloneConfig,
+  CodeAdapter,
+  type CodeConfig,
+  cloneAndExtract,
+} from "@congruo/ingest-code";
 import { FigmaAdapter, type FigmaConfig } from "@congruo/ingest-figma";
-import { computeCoverage, computeScores, rubric } from "@congruo/scoring";
+import {
+  computeCoverage,
+  computeScores,
+  rubric,
+  severityWeights,
+} from "@congruo/scoring";
 import { desc, eq, inArray } from "drizzle-orm";
 
 export interface AuditDeps {
@@ -111,11 +124,13 @@ async function runPipeline(
   const figma = await new FigmaAdapter(deps.figmaFetch).extract(figmaConfig, {
     blobs,
   });
-  const code = await new CodeAdapter().extract(
-    codeConn.config as unknown as CodeConfig,
-    { blobs },
-  );
-  const graph: CanonicalGraph = { figma, code };
+  // repoUrl = ephemeral sandboxed clone; rootDir = local checkout (dev/fixtures)
+  const codeConfig = codeConn.config as unknown as CodeConfig | CloneConfig;
+  const code =
+    "repoUrl" in codeConfig
+      ? (await cloneAndExtract(codeConfig, { blobs })).extract
+      : await new CodeAdapter().extract(codeConfig, { blobs });
+  const rawGraph: CanonicalGraph = { figma, code };
   await assertNotCancelled(db, runId);
 
   // 2. Effective mapping set: user revision wins, confident auto-proposals fill gaps
@@ -129,16 +144,31 @@ async function runPipeline(
     statuses: [],
     tokenMappings: [],
   };
+  // Ignored components leave the graph entirely; workspace naming conventions
+  // configure the matcher — a design system is a configuration, not a code path.
+  const graph = applyIgnores(rawGraph, userSet.ignored);
+  const workspace = await db.query.workspaces.findFirst({
+    where: eq(schema.workspaces.id, workspaceId),
+  });
+  const matcherConfig: MatcherConfig = {
+    ...DEFAULT_MATCHER_CONFIG,
+    ...((workspace?.settings?.matcher as Partial<MatcherConfig>) ?? {}),
+  };
+
   const userMapped = new Set(userSet.mappings.map((m) => refKey(m.figmaRef)));
   const vetoed = new Set(userSet.unlinked ?? []);
-  const auto = proposeMappings(figma, code).proposed.filter(
+  const auto = proposeMappings(
+    graph.figma,
+    graph.code,
+    matcherConfig,
+  ).proposed.filter(
     (m) =>
       !userMapped.has(refKey(m.figmaRef)) && !vetoed.has(refKey(m.figmaRef)),
   );
   const userTokenMapped = new Set(
     userSet.tokenMappings.map((m) => tokenKey(m.figmaToken)),
   );
-  const autoTokens = proposeTokenMappings(figma, code).filter(
+  const autoTokens = proposeTokenMappings(graph.figma, graph.code).filter(
     (m) => !userTokenMapped.has(tokenKey(m.figmaToken)),
   );
   const effective: MappingSetRevision = {
@@ -189,7 +219,10 @@ async function runPipeline(
       fingerprintVersion: FINGERPRINT_VERSION,
       mappingSet: effective,
       analyzerConfig: {},
-      rubric: rubric as unknown as Record<string, unknown>,
+      rubric: { entries: rubric, severityWeights } as unknown as Record<
+        string,
+        unknown
+      >,
       coverage: computeCoverage(graph) as unknown as Record<string, unknown>,
       topline: scoreSet.topline,
     });

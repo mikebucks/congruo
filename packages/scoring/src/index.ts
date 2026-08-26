@@ -10,6 +10,7 @@ export {
   type RubricEntry,
   reachMultiplier,
   rubric,
+  severityWeights,
 } from "./rubric";
 export {
   type ComponentScore,

@@ -45,7 +45,9 @@ await db.insert(schema.connections).values([
       rootDir: acmeRoot,
       repo: "acme/acme-ds",
       sha: "local",
-      dsPackage: { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+      dsPackages: [
+        { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+      ],
       appGlob: "app/src/**/*.tsx",
     },
   },

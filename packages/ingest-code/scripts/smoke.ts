@@ -15,10 +15,12 @@ const blobs = {
 const { extract, sha } = await cloneAndExtract(
   {
     repoUrl: "https://github.com/shadcn-ui/ui",
-    dsPackage: {
-      name: "@/registry/new-york-v4/ui",
-      srcGlob: "apps/v4/registry/new-york-v4/ui/*.tsx",
-    },
+    dsPackages: [
+      {
+        name: "@/registry/new-york-v4/ui",
+        srcGlob: "apps/v4/registry/new-york-v4/ui/*.tsx",
+      },
+    ],
     appGlob: "apps/v4/app/**/*.tsx",
     tokenPatterns: {
       tailwindPrefixes: ["bg-", "text-", "p-", "px-", "py-", "gap-"],

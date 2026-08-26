@@ -8,7 +8,10 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "skipLibCheck": true,
-    "paths": { "@acme/ui": ["./packages/ui/src/index.ts"] }
+    "paths": {
+      "@acme/ui": ["./packages/ui/src/index.ts"],
+      "@acme/icons": ["./packages/icons/index.d.ts"]
+    }
   },
   "include": ["packages", "app"]
 }

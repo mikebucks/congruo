@@ -13,11 +13,50 @@ import type {
 export const AUTO_THRESHOLD = 0.85;
 export const SUGGEST_THRESHOLD = 0.6;
 
-export function normalizeName(name: string): string {
-  return name
-    .replace(/^(DS|Ds|ds)(?=[A-Z_-])/, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+/** Workspace-configurable naming conventions. The defaults encode common
+ * ecosystem conventions (DS prefixes, Icon suffixes, size synonyms) — a
+ * specific design system is a configuration of these, never a code path. */
+export interface MatcherConfig {
+  stripPrefixes: string[];
+  stripSuffixes: string[];
+  valueSynonyms: [string, string][];
+}
+
+export const DEFAULT_MATCHER_CONFIG: MatcherConfig = {
+  stripPrefixes: ["DS"],
+  stripSuffixes: ["Icon"],
+  valueSynonyms: [
+    ["sm", "small"],
+    ["md", "medium"],
+    ["lg", "large"],
+    ["xs", "extrasmall"],
+    ["xl", "extralarge"],
+  ],
+};
+
+const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+export function normalizeName(
+  name: string,
+  config: MatcherConfig = DEFAULT_MATCHER_CONFIG,
+): string {
+  let raw = name;
+  for (const prefix of config.stripPrefixes) {
+    const re = new RegExp(`^(${prefix})(?=[A-Z_-])`, "i");
+    if (re.test(raw)) {
+      raw = raw.replace(re, "");
+      break;
+    }
+  }
+  let base = clean(raw);
+  for (const suffix of config.stripSuffixes) {
+    const tail = clean(suffix);
+    if (tail && base.length > tail.length && base.endsWith(tail)) {
+      base = base.slice(0, -tail.length);
+      break;
+    }
+  }
+  return base;
 }
 
 /** Sørensen–Dice coefficient on character bigrams. */
@@ -52,11 +91,12 @@ export interface MatchResult {
 export function proposeMappings(
   figma: CanonicalExtract,
   code: CanonicalExtract,
+  config: MatcherConfig = DEFAULT_MATCHER_CONFIG,
 ): MatchResult {
   const codeDefs = code.definitions;
   const byNorm = new Map<string, ComponentDefinition[]>();
   for (const def of codeDefs) {
-    const key = normalizeName(def.name);
+    const key = normalizeName(def.name, config);
     byNorm.set(key, [...(byNorm.get(key) ?? []), def]);
   }
 
@@ -74,7 +114,7 @@ export function proposeMappings(
     codeRef: codeDef.ref,
     confidence,
     source: "auto",
-    propMappings: matchProps(figmaDef, codeDef),
+    propMappings: matchProps(figmaDef, codeDef, config),
   });
 
   // Exact tier by normalized-name groups. A code component pairs at most once:
@@ -83,7 +123,7 @@ export function proposeMappings(
   // stay unmatched for human review rather than silently double-pairing.
   const figmaByNorm = new Map<string, ComponentDefinition[]>();
   for (const def of figma.definitions) {
-    const key = normalizeName(def.name);
+    const key = normalizeName(def.name, config);
     figmaByNorm.set(key, [...(figmaByNorm.get(key) ?? []), def]);
   }
   const exactMatched = new Set<ComponentDefinition>();
@@ -106,7 +146,7 @@ export function proposeMappings(
 
   for (const figmaDef of figma.definitions) {
     if (exactMatched.has(figmaDef)) continue;
-    const norm = normalizeName(figmaDef.name);
+    const norm = normalizeName(figmaDef.name, config);
     if ((byNorm.get(norm)?.length ?? 0) > 1) {
       unmatchedFigma.push(figmaDef.name); // several code candidates — human decides
       continue;
@@ -115,7 +155,7 @@ export function proposeMappings(
     let best: { def: ComponentDefinition; score: number } | undefined;
     for (const codeDef of codeDefs) {
       if (matchedCode.has(codeDef.name)) continue;
-      const score = similarity(norm, normalizeName(codeDef.name));
+      const score = similarity(norm, normalizeName(codeDef.name, config));
       if (!best || score > best.score) best = { def: codeDef, score };
     }
     if (best && best.score >= AUTO_THRESHOLD) {
@@ -141,14 +181,6 @@ function singleOrNone<T>(items: T[]): T | undefined {
 
 // ---- prop-level matching ----
 
-const VALUE_SYNONYMS: [string, string][] = [
-  ["sm", "small"],
-  ["md", "medium"],
-  ["lg", "large"],
-  ["xs", "extrasmall"],
-  ["xl", "extralarge"],
-];
-
 function normalizeProp(name: string): string {
   return name
     .replace(/^(is|has)(?=[A-Z_])/, "")
@@ -156,9 +188,9 @@ function normalizeProp(name: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function normalizeValue(v: string): string {
-  const n = v.toLowerCase().replace(/[^a-z0-9]/g, "");
-  for (const [a, b] of VALUE_SYNONYMS) {
+function normalizeValue(v: string, config: MatcherConfig): string {
+  const n = clean(v);
+  for (const [a, b] of config.valueSynonyms) {
     if (n === a) return b;
   }
   return n;
@@ -169,6 +201,7 @@ function normalizeValue(v: string): string {
 export function matchProps(
   figmaDef: ComponentDefinition,
   codeDef: ComponentDefinition,
+  config: MatcherConfig = DEFAULT_MATCHER_CONFIG,
 ): PropMapping[] {
   const codeByNorm = new Map(
     codeDef.props.map((p) => [normalizeProp(p.name), p]),
@@ -181,7 +214,7 @@ export function matchProps(
     const valueMap: Record<string, string> = {};
     for (const v of values) {
       const match = codeProp.values.find(
-        (cv) => normalizeValue(cv) === normalizeValue(v),
+        (cv) => normalizeValue(cv, config) === normalizeValue(v, config),
       );
       if (match !== undefined) valueMap[v] = match;
     }

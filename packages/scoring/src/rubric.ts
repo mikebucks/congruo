@@ -1,4 +1,4 @@
-import type { Dimension, FindingType } from "@congruo/core";
+import type { Dimension, FindingType, Severity } from "@congruo/core";
 
 /** THE scoring config. Tuning scores means editing this file — never analyzer
  * code. Milestone-4 gate tunes these once against the real Polaris audit. */
@@ -31,6 +31,14 @@ export const rubric: Record<FindingType, RubricEntry> = {
   NO_STORY: { penalty: 35, reach: "none" },
   PROPS_UNDOCUMENTED: { penalty: 25, reach: "none" },
   NO_USAGE_GUIDANCE: { penalty: 25, reach: "none" },
+};
+
+/** Severity conservatism must reach the arithmetic: a wall of info findings
+ * informs, it does not zero a score. */
+export const severityWeights: Record<Severity, number> = {
+  info: 0.25,
+  warn: 1,
+  error: 2,
 };
 
 /** A TOKEN_MISMATCH on a 400-instance Button outweighs one on a 3-instance

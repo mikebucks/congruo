@@ -1,9 +1,11 @@
+import { StarIcon } from "@acme/icons";
 import { Badge, Banner, Button, Input, Tag } from "@acme/ui";
 
 export function Settings() {
   return (
     <div>
       <Banner message="Changes are saved automatically" tone="info" />
+      <StarIcon />
       <Input value="" size="md" isDisabled />
       <Tag label="Pro" tone="success" />
       <Badge label="Beta" />

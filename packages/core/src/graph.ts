@@ -1,6 +1,7 @@
 import type {
   CanonicalGraph,
   ComponentDefinition,
+  ComponentStatus,
   Mapping,
   MappingSetRevision,
 } from "./model";
@@ -85,6 +86,54 @@ export function usageStats(graph: CanonicalGraph): Map<string, UsageStats> {
     stats.set(key, entry);
   }
   return stats;
+}
+
+/** Effective status per refKey, resolved pair-aware: a status set on either
+ * side of a mapped pair applies to BOTH sides. Gating and scoring must share
+ * this — resolving differently made findings and scores disagree. */
+export function resolveStatuses(
+  graph: CanonicalGraph,
+  mappings: MappingSetRevision,
+): Map<string, ComponentStatus> {
+  const declared = new Map(
+    mappings.statuses.map((s) => [refKey(s.ref), s.status]),
+  );
+  const out = new Map<string, ComponentStatus>();
+  for (const pair of pairComponents(graph, mappings)) {
+    const keys = new Set([refKey(pair.subjectRef)]);
+    if (pair.figmaDef) keys.add(refKey(pair.figmaDef.ref));
+    if (pair.codeDef) keys.add(refKey(pair.codeDef.ref));
+    if (pair.mapping) {
+      keys.add(refKey(pair.mapping.figmaRef));
+      keys.add(refKey(pair.mapping.codeRef));
+    }
+    let status: ComponentStatus | undefined;
+    for (const k of keys) {
+      status ??= declared.get(k);
+    }
+    if (status) {
+      for (const k of keys) out.set(k, status);
+    }
+  }
+  return out;
+}
+
+/** Removes ignored components — definitions AND their usages — so they leave
+ * every numerator and denominator (findings, scores, coverage) consistently. */
+export function applyIgnores(
+  graph: CanonicalGraph,
+  ignored: string[] | undefined,
+): CanonicalGraph {
+  if (!ignored || ignored.length === 0) return graph;
+  const drop = new Set(ignored);
+  const filterSide = (extract: CanonicalGraph["figma"]) => ({
+    ...extract,
+    definitions: extract.definitions.filter((d) => !drop.has(refKey(d.ref))),
+    usages: extract.usages.filter(
+      (u) => !u.definitionRef || !drop.has(refKey(u.definitionRef)),
+    ),
+  });
+  return { figma: filterSide(graph.figma), code: filterSide(graph.code) };
 }
 
 export function variantCombinations(def: ComponentDefinition): number {

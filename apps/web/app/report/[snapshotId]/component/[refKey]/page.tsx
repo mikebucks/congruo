@@ -4,6 +4,11 @@ import { notFound } from "next/navigation";
 import { severityStyle } from "../../../../../components/report-view";
 import { locationLink, summarize } from "../../../../../lib/evidence";
 import { loadReport } from "../../../../../lib/report-data";
+import {
+  contribution,
+  frozenScoring,
+  statusFor,
+} from "../../../../../lib/scoring-view";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,22 @@ export default async function ComponentDetail({
     ?.artifact.ref.repo;
   const findings = data.findings.filter((f) => f.canonicalKey === refKey);
   const base = `/report/${snapshotId}`;
+  const scoring = frozenScoring(data.snapshot.rubric);
+  const status = statusFor(data.snapshot.mappingSet, refKey);
+  const exempt = status === "new" || status === "experimental";
+  const unassessedReason = (d: Dimension): string =>
+    exempt
+      ? `status: ${status} — exempt`
+      : d === "documentation"
+        ? "no code component to document"
+        : "not evaluated";
+  const penaltyFor = (d: Dimension) =>
+    findings
+      .filter((f) => f.dimension === d)
+      .reduce(
+        (sum, f) => sum + (contribution(scoring, f, component.usageTotal) ?? 0),
+        0,
+      );
 
   return (
     <main className="mx-auto max-w-4xl p-8">
@@ -44,6 +65,7 @@ export default async function ComponentDetail({
       <div className="mt-4 grid grid-cols-4 gap-3">
         {DIMS.map((d) => {
           const v = component.scores[d];
+          const penalty = penaltyFor(d);
           return (
             <div
               key={d}
@@ -53,9 +75,13 @@ export default async function ComponentDetail({
               <div className="text-3xl font-semibold tabular-nums">
                 {v == null ? "—" : Math.round(v)}
               </div>
-              {v == null && (
-                <div className="text-xs text-neutral-400">unassessed</div>
-              )}
+              <div className="text-xs text-neutral-400">
+                {v == null
+                  ? `unassessed · ${unassessedReason(d)}`
+                  : penalty > 0
+                    ? `100 − ${Math.round(penalty)}${100 - penalty < 0 ? " → floored at 0" : ""}`
+                    : "no findings"}
+              </div>
             </div>
           );
         })}
@@ -82,6 +108,18 @@ export default async function ComponentDetail({
                       <span className="font-mono text-xs text-neutral-400">
                         {f.type}
                       </span>
+                      {(() => {
+                        const points = contribution(
+                          scoring,
+                          f,
+                          component.usageTotal,
+                        );
+                        return points === null ? null : (
+                          <span className="ml-2 text-xs tabular-nums text-neutral-400">
+                            −{Math.round(points * 10) / 10} pts
+                          </span>
+                        );
+                      })()}
                       <p className="mt-0.5 text-neutral-700">
                         {summarize(f.type, f.evidence)}
                       </p>

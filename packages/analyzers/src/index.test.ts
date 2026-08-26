@@ -472,6 +472,21 @@ test("documentation signals; figma-only components emit none", () => {
 
 // ---- gating ----
 
+test("Badge bug regression: status on the figma side gates code-side findings", () => {
+  const graph = graphOf(
+    { definitions: [def(figmaRef("k1"), "Badge")] },
+    { definitions: [def(codeRef("Badge"), "Badge")] },
+  );
+  const mappings = mappingOf(figmaRef("k1"), codeRef("Badge"), {
+    statuses: [{ ref: figmaRef("k1"), status: "new" }], // set on the FIGMA ref
+  });
+  const findings = runAnalyzers(graph, mappings, {});
+  // documentation findings target the CODE ref — the pair-aware resolver
+  // must gate them anyway, matching the unassessed score
+  expect(findings.some((f) => f.dimension === "documentation")).toBe(false);
+  expect(findings.some((f) => f.dimension === "adoption")).toBe(false);
+});
+
 test("status gating: new/experimental exempt from adoption and documentation", () => {
   const graph = graphOf(
     {},

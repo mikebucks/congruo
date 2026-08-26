@@ -8,7 +8,7 @@ export const documentation: Analyzer = (graph, mappings) => {
   const findings: Finding[] = [];
   for (const pair of pairComponents(graph, mappings)) {
     const def = pair.codeDef;
-    if (!def) continue;
+    if (!def || def.kind === "asset") continue;
 
     if (!def.docs.storyExists) {
       findings.push(

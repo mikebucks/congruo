@@ -1,25 +1,26 @@
-import type { Finding, MappingSetRevision } from "@congruo/core";
-import { refKey } from "@congruo/core";
+import type {
+  CanonicalGraph,
+  Finding,
+  MappingSetRevision,
+} from "@congruo/core";
+import { refKey, resolveStatuses } from "@congruo/core";
 
 /** PRD status gating, applied once after all analyzers: components marked
  * new/experimental are exempt from Adoption and Documentation findings.
- * (Deprecated inversion ships with the full adoption analyzer in M3.) */
+ * Status resolution is pair-aware (resolveStatuses) so a status set on the
+ * Figma side gates code-side findings too — scoring uses the same resolver. */
 export function applyStatusGating(
   findings: Finding[],
+  graph: CanonicalGraph,
   mappings: MappingSetRevision,
 ): Finding[] {
-  const exempt = new Set(
-    mappings.statuses
-      .filter((s) => s.status === "new" || s.status === "experimental")
-      .map((s) => refKey(s.ref)),
-  );
-  if (exempt.size === 0) return findings;
-  return findings.filter(
-    (f) =>
-      !(
-        (f.dimension === "adoption" || f.dimension === "documentation") &&
-        f.subjectRef &&
-        exempt.has(refKey(f.subjectRef))
-      ),
-  );
+  const statuses = resolveStatuses(graph, mappings);
+  if (statuses.size === 0) return findings;
+  return findings.filter((f) => {
+    if (f.dimension !== "adoption" && f.dimension !== "documentation") {
+      return true;
+    }
+    const status = f.subjectRef && statuses.get(refKey(f.subjectRef));
+    return status !== "new" && status !== "experimental";
+  });
 }

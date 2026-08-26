@@ -172,6 +172,55 @@ test("penalties scale with reach and floor at zero", () => {
   );
 });
 
+test("severity weighs the penalty: info costs a quarter of warn", () => {
+  const ref = codeRef("Tag");
+  const graph = graphWith({ code: [{ ref, name: "Tag" }] });
+  const finding = (severity: "info" | "warn"): Finding => ({
+    ...createFinding({
+      type: "HARDCODED_VALUE_CODE",
+      subjectRef: ref,
+      evidence: {
+        value: "#abc123",
+        property: "style",
+        occurrences: 1,
+        matchingToken: null,
+      },
+      locations: [],
+    }),
+    severity,
+  });
+  const asInfo = computeScores(graph, emptyMappings, [finding("info")]);
+  const asWarn = computeScores(graph, emptyMappings, [finding("warn")]);
+  const infoScore = asInfo.components[0]?.scores.parity ?? 0;
+  const warnScore = asWarn.components[0]?.scores.parity ?? 0;
+  expect(100 - infoScore).toBe((100 - warnScore) / 4);
+});
+
+test("status on the figma side nulls the pair's exempt dimensions", () => {
+  const fRef = figmaRef("k1");
+  const cRef = codeRef("Badge");
+  const graph = graphWith({
+    figma: [{ ref: fRef, name: "Badge" }],
+    code: [{ ref: cRef, name: "Badge" }],
+  });
+  const mappings: MappingSetRevision = {
+    ...emptyMappings,
+    mappings: [
+      {
+        figmaRef: fRef,
+        codeRef: cRef,
+        confidence: 1,
+        source: "user",
+        propMappings: [],
+      },
+    ],
+    statuses: [{ ref: fRef, status: "new" }],
+  };
+  const { components } = computeScores(graph, mappings, []);
+  expect(components[0]?.scores.adoption).toBeNull();
+  expect(components[0]?.scores.documentation).toBeNull();
+});
+
 test("findings on either side of a mapped pair roll up onto one component", () => {
   const fRef = figmaRef("k1");
   const cRef = codeRef("Button");

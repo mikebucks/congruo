@@ -17,7 +17,7 @@ export const runAnalyzers: Analyzer = (graph, mappings, config) => {
   for (const analyzer of analyzers) {
     findings.push(...analyzer(graph, mappings, config));
   }
-  return applyStatusGating(findings, mappings);
+  return applyStatusGating(findings, graph, mappings);
 };
 
 export { adoption } from "./adoption";

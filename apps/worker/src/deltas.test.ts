@@ -50,7 +50,14 @@ async function audit() {
       rootDir: workdir,
       repo: "acme/acme-ds",
       sha: "local",
-      dsPackage: { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+      dsPackages: [
+        { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+        {
+          name: "@acme/icons",
+          srcGlob: "packages/icons/*.svg",
+          strategy: "svg-assets" as const,
+        },
+      ],
       appGlob: "app/src/**/*.tsx",
     },
     { blobs: noBlobs },

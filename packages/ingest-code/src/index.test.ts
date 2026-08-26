@@ -19,7 +19,14 @@ const config: CodeConfig = {
   rootDir: fixtureRoot,
   repo: "acme/acme-ds",
   sha: "local",
-  dsPackage: { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+  dsPackages: [
+    { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+    {
+      name: "@acme/icons",
+      srcGlob: "packages/icons/*.svg",
+      strategy: "svg-assets" as const,
+    },
+  ],
   appGlob: "app/src/**/*.tsx",
   tokenPatterns: { tailwindPrefixes: ["bg-", "p-"] },
 };
@@ -34,7 +41,7 @@ async function extract() {
   return new CodeAdapter().extract(config, { blobs: noBlobs });
 }
 
-test("extracts all eight DS components (stories excluded)", async () => {
+test("extracts components plus svg assets across packages", async () => {
   const out = await extract();
   expect(out.definitions.map((d) => d.name).sort()).toEqual([
     "Badge",
@@ -42,10 +49,16 @@ test("extracts all eight DS components (stories excluded)", async () => {
     "Button",
     "ButtonNew",
     "Card",
+    "CheckIcon",
     "Input",
+    "StarIcon",
     "Stepper",
     "Tag",
   ]);
+  const star = out.definitions.find((d) => d.name === "StarIcon");
+  expect(star?.kind).toBe("asset");
+  expect(star?.ref.kind === "code" && star.ref.pkg).toBe("@acme/icons");
+  expect(star?.props).toEqual([]);
   const button = out.definitions.find((d) => d.name === "Button");
   const variant = button?.props.find((p) => p.name === "variant");
   expect(variant?.required).toBe(true);
@@ -92,8 +105,16 @@ test("usage census: DS, local components, and raw styled elements", async () => 
   );
   const raw = out.usages.filter((u) => u.kind === "styled-element");
 
-  // Home: 2 Card + 2 Button; Settings: Banner, Input, Tag, Badge, Button
-  expect(ds).toHaveLength(9);
+  // Home: 2 Card + 2 Button; Settings: Banner, Input, Tag, Badge, Button + StarIcon
+  expect(ds).toHaveLength(10);
+  const starUsage = ds.find(
+    (u) =>
+      u.definitionRef?.kind === "code" &&
+      u.definitionRef.exportSymbol === "StarIcon",
+  );
+  expect(
+    starUsage?.definitionRef?.kind === "code" && starUsage.definitionRef.pkg,
+  ).toBe("@acme/icons"); // resolved to the right package
   expect(local.map((u) => u.name)).toEqual(["LocalBadge"]);
   expect(raw).toHaveLength(2); // span in LocalBadge.tsx + span in Settings.tsx
 
@@ -124,14 +145,14 @@ test("cloneAndExtract clones, extracts, resolves sha, and cleans up", async () =
   const { extract: out, sha } = await cloneAndExtract(
     {
       repoUrl: `file://${localRepo}`,
-      dsPackage: config.dsPackage,
+      dsPackages: config.dsPackages,
       appGlob: config.appGlob,
     },
     { blobs: noBlobs },
     { allowLocalGit: true, scratchDir: scratch },
   );
   expect(sha).toMatch(/^[0-9a-f]{40}$/);
-  expect(out.definitions).toHaveLength(8);
+  expect(out.definitions).toHaveLength(10);
   expect(out.artifacts[0]?.version).toBe(sha);
   // the ephemeral checkout is gone
   const { readdir } = await import("node:fs/promises");
@@ -144,7 +165,7 @@ test("cloneAndExtract rejects non-github URLs", async () => {
     cloneAndExtract(
       {
         repoUrl: "https://evil.example.com/x/y",
-        dsPackage: config.dsPackage,
+        dsPackages: config.dsPackages,
         appGlob: config.appGlob,
       },
       { blobs: noBlobs },
@@ -154,7 +175,7 @@ test("cloneAndExtract rejects non-github URLs", async () => {
     cloneAndExtract(
       {
         repoUrl: `file://${localRepo}`,
-        dsPackage: config.dsPackage,
+        dsPackages: config.dsPackages,
         appGlob: config.appGlob,
       },
       { blobs: noBlobs },

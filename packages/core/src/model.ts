@@ -22,6 +22,9 @@ export interface ComponentDefinition {
   ref: ComponentRef;
   artifactId: string;
   name: string;
+  /** Assets (icons, illustrations) participate in matching and adoption but
+   * are not judged for documentation. Default: "component". */
+  kind?: "component" | "asset";
   props: PropDef[];
   variants: Record<string, string[]>;
   tokensUsed: { token: TokenRef; property: string }[];
@@ -104,6 +107,9 @@ export interface MappingSetRevision {
   tokenMappings: TokenMapping[];
   /** refKeys the user explicitly unlinked — auto-matching must not re-pair. */
   unlinked?: string[];
+  /** refKeys marked "not a component / out of scope" — removed from the graph
+   * (definitions and their usages) before analysis, scoring, and coverage. */
+  ignored?: string[];
 }
 
 export type { CodeLoc };

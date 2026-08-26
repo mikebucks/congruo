@@ -11,9 +11,11 @@ export {
   type Severity,
 } from "./findings";
 export {
+  applyIgnores,
   type PairedComponent,
   pairComponents,
   pairUsage,
+  resolveStatuses,
   type UsageStats,
   usageStats,
   variantCombinations,
@@ -21,6 +23,8 @@ export {
 export { FINGERPRINT_VERSION, fingerprint } from "./identity";
 export {
   AUTO_THRESHOLD,
+  DEFAULT_MATCHER_CONFIG,
+  type MatcherConfig,
   type MatchResult,
   matchProps,
   normalizeName,
