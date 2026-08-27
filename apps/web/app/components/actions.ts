@@ -27,7 +27,7 @@ export async function confirmMapping(formData: FormData) {
       mapping,
     ],
   }));
-  revalidatePath("/mapping");
+  revalidatePath("/components");
 }
 
 export async function unlinkMapping(formData: FormData) {
@@ -41,31 +41,39 @@ export async function unlinkMapping(formData: FormData) {
     // an explicit user unlink must also veto future auto-matching
     unlinked: [...new Set([...(cur.unlinked ?? []), refKey(figmaRef)])],
   }));
-  revalidatePath("/mapping");
+  revalidatePath("/components");
 }
 
-/** Manual assign: resolves a typed component name against the provided
- * candidates (unpaired code defs, serialized by the page). */
+/** Manual assign, from either side: a Figma-only row picks a code
+ * counterpart, a code-only row picks a Figma one. The typed name resolves
+ * against the candidates the page serialized for that row's opposite side. */
 export async function assignMapping(formData: FormData) {
   const workspaceId = String(formData.get("workspaceId"));
-  const figmaRef = parseRef(String(formData.get("figmaRef")));
-  const typed = String(formData.get("codeName")).trim();
+  const subjectSide = String(formData.get("subjectSide")) as "figma" | "code";
+  const subjectRef = parseRef(String(formData.get("subjectRef")));
+  const typed = String(formData.get("counterpartName")).trim();
   const candidates = JSON.parse(String(formData.get("candidates"))) as {
     name: string;
     ref: ComponentRef;
   }[];
   const hits = candidates.filter((c) => c.name === typed);
   if (hits.length !== 1 || !hits[0]) return; // unknown or ambiguous — no-op
-  const codeRef = hits[0].ref;
+  const counterpart = hits[0].ref;
+  const figmaRef = subjectSide === "figma" ? subjectRef : counterpart;
+  const codeRef = subjectSide === "figma" ? counterpart : subjectRef;
   await saveRevision(workspaceId, (cur) => ({
     ...cur,
     mappings: [
-      ...cur.mappings.filter((m) => refKey(m.figmaRef) !== refKey(figmaRef)),
+      ...cur.mappings.filter(
+        (m) =>
+          refKey(m.figmaRef) !== refKey(figmaRef) &&
+          refKey(m.codeRef) !== refKey(codeRef),
+      ),
       { figmaRef, codeRef, confidence: 1, source: "user", propMappings: [] },
     ],
     unlinked: (cur.unlinked ?? []).filter((k) => k !== refKey(figmaRef)),
   }));
-  revalidatePath("/mapping");
+  revalidatePath("/components");
 }
 
 export async function ignoreComponent(formData: FormData) {
@@ -75,7 +83,7 @@ export async function ignoreComponent(formData: FormData) {
     ...cur,
     ignored: [...new Set([...(cur.ignored ?? []), ...refs.map(refKey)])],
   }));
-  revalidatePath("/mapping");
+  revalidatePath("/components");
 }
 
 export async function unignoreComponent(formData: FormData) {
@@ -85,7 +93,7 @@ export async function unignoreComponent(formData: FormData) {
     ...cur,
     ignored: (cur.ignored ?? []).filter((k) => k !== key),
   }));
-  revalidatePath("/mapping");
+  revalidatePath("/components");
 }
 
 export async function setStatus(formData: FormData) {
@@ -100,5 +108,5 @@ export async function setStatus(formData: FormData) {
       { ref, status },
     ],
   }));
-  revalidatePath("/mapping");
+  revalidatePath("/components");
 }

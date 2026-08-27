@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { runAnalyzers } from "@congruo/analyzers";
 import type {
   BlobStore,
+  CanonicalExtract,
   CanonicalGraph,
   Dimension,
   MappingSetRevision,
@@ -111,25 +112,40 @@ async function runPipeline(
   });
   const figmaConn = connections.find((c) => c.provider === "figma");
   const codeConn = connections.find((c) => c.provider === "github");
-  if (!figmaConn || !codeConn) {
-    throw new Error("workspace needs one figma and one github connection");
+  if (!figmaConn && !codeConn) {
+    throw new Error("workspace needs at least one source connection");
   }
 
-  // 1. Ingest both sides
-  const figmaConfig: FigmaConfig = {
-    pat: decryptToken(figmaConn.encryptedToken, deps.encKeys),
-    libraryFileKey: String(figmaConn.config.libraryFileKey),
-    consumerFileKeys: (figmaConn.config.consumerFileKeys as string[]) ?? [],
-  };
-  const figma = await new FigmaAdapter(deps.figmaFetch).extract(figmaConfig, {
-    blobs,
+  // 1. Ingest whichever sides exist — a component can live in code, Figma,
+  // or both, and a workspace can legitimately have only one side.
+  const empty = (): CanonicalExtract => ({
+    artifacts: [],
+    definitions: [],
+    usages: [],
+    tokens: [],
+    diagnostics: [],
+    rawPayloadRefs: [],
   });
-  // repoUrl = ephemeral sandboxed clone; rootDir = local checkout (dev/fixtures)
-  const codeConfig = codeConn.config as unknown as CodeConfig | CloneConfig;
-  const code =
-    "repoUrl" in codeConfig
-      ? (await cloneAndExtract(codeConfig, { blobs })).extract
-      : await new CodeAdapter().extract(codeConfig, { blobs });
+  let figma = empty();
+  if (figmaConn) {
+    const figmaConfig: FigmaConfig = {
+      pat: decryptToken(figmaConn.encryptedToken, deps.encKeys),
+      libraryFileKey: String(figmaConn.config.libraryFileKey),
+      consumerFileKeys: (figmaConn.config.consumerFileKeys as string[]) ?? [],
+    };
+    figma = await new FigmaAdapter(deps.figmaFetch).extract(figmaConfig, {
+      blobs,
+    });
+  }
+  let code = empty();
+  if (codeConn) {
+    // repoUrl = ephemeral sandboxed clone; rootDir = local checkout
+    const codeConfig = codeConn.config as unknown as CodeConfig | CloneConfig;
+    code =
+      "repoUrl" in codeConfig
+        ? (await cloneAndExtract(codeConfig, { blobs })).extract
+        : await new CodeAdapter().extract(codeConfig, { blobs });
+  }
   const rawGraph: CanonicalGraph = { figma, code };
   await assertNotCancelled(db, runId);
 

@@ -284,6 +284,70 @@ test("hardcoded values aggregate per (property, value) with matching token", () 
   expect(accent?.locations).toHaveLength(2);
 });
 
+test("single-side workspaces: no cross-side missing findings without the other side", () => {
+  // code-only workspace: figma side has no artifacts and no definitions
+  const codeOnly = graphOf(
+    {},
+    {
+      artifacts: [
+        {
+          id: "pkg",
+          side: "code",
+          ref: { repo: "r", pkg: "p" },
+          version: "s",
+          role: "ds-package",
+        },
+      ],
+      definitions: [def(codeRef("Button"), "Button")],
+    },
+  );
+  const codeOnlyFindings = runAnalyzers(codeOnly, noMappings, {});
+  expect(codeOnlyFindings.some((f) => f.type === "MISSING_IN_FIGMA")).toBe(
+    false,
+  );
+
+  // figma-only workspace: no code side at all
+  const figmaOnly = graphOf(
+    { definitions: [def(figmaRef("k1"), "Button")] },
+    {},
+  );
+  const figmaOnlyFindings = runAnalyzers(figmaOnly, noMappings, {});
+  expect(figmaOnlyFindings.some((f) => f.type === "MISSING_IN_CODE")).toBe(
+    false,
+  );
+
+  // side-local parity still works one-sided
+  const withHardcode = graphOf(
+    {},
+    {
+      definitions: [
+        def(codeRef("Button"), "Button", {
+          hardcodedValues: [
+            {
+              value: "#ff5733",
+              property: "style",
+              location: {
+                kind: "code",
+                filePath: "b.tsx",
+                sha: "s",
+                line: 1,
+                col: 1,
+                endLine: 1,
+                endCol: 1,
+              },
+            },
+          ],
+        }),
+      ],
+    },
+  );
+  expect(
+    runAnalyzers(withHardcode, noMappings, {}).some(
+      (f) => f.type === "HARDCODED_VALUE_CODE",
+    ),
+  ).toBe(true);
+});
+
 // ---- complexity ----
 
 test("REDUNDANT_COMPONENT: ButtonNew flagged against Button", () => {
@@ -489,7 +553,8 @@ test("Badge bug regression: status on the figma side gates code-side findings", 
 
 test("status gating: new/experimental exempt from adoption and documentation", () => {
   const graph = graphOf(
-    {},
+    // a figma side exists, so cross-side parity findings still fire
+    { definitions: [def(figmaRef("kx"), "Other")] },
     { definitions: [def(codeRef("Stepper"), "Stepper")] },
   );
   const gated: MappingSetRevision = {
@@ -498,10 +563,18 @@ test("status gating: new/experimental exempt from adoption and documentation", (
   };
   const without = runAnalyzers(graph, noMappings, {});
   const withGate = runAnalyzers(graph, gated, {});
-  expect(without.some((f) => f.type === "UNUSED_COMPONENT")).toBe(true);
+  const onStepper = (f: Finding) =>
+    f.subjectRef?.kind === "code" && f.subjectRef.exportSymbol === "Stepper";
+  expect(
+    without.some((f) => f.type === "UNUSED_COMPONENT" && onStepper(f)),
+  ).toBe(true);
   expect(without.some((f) => f.type === "NO_STORY")).toBe(true);
-  expect(withGate.some((f) => f.dimension === "adoption")).toBe(false);
-  expect(withGate.some((f) => f.dimension === "documentation")).toBe(false);
+  expect(withGate.some((f) => f.dimension === "adoption" && onStepper(f))).toBe(
+    false,
+  );
+  expect(
+    withGate.some((f) => f.dimension === "documentation" && onStepper(f)),
+  ).toBe(false);
   // parity/complexity untouched by gating
   expect(withGate.some((f) => f.type === "MISSING_IN_FIGMA")).toBe(true);
 });

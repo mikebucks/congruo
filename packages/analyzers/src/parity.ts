@@ -18,9 +18,17 @@ export const parity: Analyzer = (graph, mappings) => {
   const findings: Finding[] = [];
   const pairs = pairComponents(graph, mappings);
 
+  // A component can exist in code, Figma, or both — and a workspace can have
+  // only one side connected at all. "Missing on the other side" is only a
+  // finding when the other side exists; otherwise it's not drift, it's scope.
+  const sideExists = (side: "figma" | "code") =>
+    graph[side].artifacts.length > 0 || graph[side].definitions.length > 0;
+  const figmaExists = sideExists("figma");
+  const codeExists = sideExists("code");
+
   for (const pair of pairs) {
     // component-level presence
-    if (pair.figmaDef && !pair.codeDef && !pair.mapping) {
+    if (pair.figmaDef && !pair.codeDef && !pair.mapping && codeExists) {
       const def = pair.figmaDef;
       // No variants and no props = usually an icon/asset, not a component
       // anyone expects 1:1 in code. Conservative severity keeps trust.
@@ -39,7 +47,7 @@ export const parity: Analyzer = (graph, mappings) => {
         }),
       );
     }
-    if (pair.codeDef && !pair.figmaDef && !pair.mapping) {
+    if (pair.codeDef && !pair.figmaDef && !pair.mapping && figmaExists) {
       findings.push(
         createFinding({
           type: "MISSING_IN_FIGMA",

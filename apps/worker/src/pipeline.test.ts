@@ -231,6 +231,41 @@ test("a cancelled run seals nothing and stays cancelled", async () => {
   expect(snapshot).toBeUndefined();
 });
 
+test("code-only workspace: seals with no figma connection, no cross-side noise", async () => {
+  const [ws] = await ctx.db
+    .insert(schema.workspaces)
+    .values({ name: "code-only" })
+    .returning();
+  if (!ws) throw new Error("insert failed");
+  await ctx.db.insert(schema.connections).values({
+    workspaceId: ws.id,
+    provider: "github",
+    encryptedToken: encryptToken("unused", encKey, 1),
+    keyVersion: 1,
+    config: {
+      rootDir: acmeRoot,
+      repo: "acme/acme-ds",
+      sha: "local",
+      dsPackages: [
+        { name: "@acme/ui", srcGlob: "packages/ui/src/**/*.{ts,tsx}" },
+      ],
+      appGlob: "app/src/**/*.tsx",
+    },
+  });
+  await ctx.db
+    .insert(schema.auditRuns)
+    .values({ id: "run-code-only", workspaceId: ws.id, status: "queued" });
+
+  const { snapshotId } = await executeAuditRun(deps(), "run-code-only");
+  const findings = await ctx.db.query.findingOccurrences.findMany({
+    where: eq(schema.findingOccurrences.snapshotId, snapshotId),
+  });
+  expect(findings.length).toBeGreaterThan(0); // side-local findings exist
+  expect(findings.some((f) => f.type === "MISSING_IN_FIGMA")).toBe(false);
+  expect(findings.some((f) => f.type === "MISSING_IN_CODE")).toBe(false);
+  expect(findings.some((f) => f.type === "HARDCODED_VALUE_CODE")).toBe(true);
+});
+
 test("mid-run failure marks the run failed and seals nothing", async () => {
   const failing: typeof fetch = async () => {
     throw new Error("network died");
