@@ -124,6 +124,86 @@ test("consumer extraction resolves all top-level instances to definition refs", 
   expect(buttonUsage?.overriddenProps).toHaveProperty("Variant");
 });
 
+test("nameless variables capture their resolved render values", async () => {
+  const { extract } = await extractFixture();
+  const withValues = extract.tokens.filter((t) => t.value);
+  // the Enterprise API gate hides names, but not what the tokens resolve to
+  expect(withValues.length).toBeGreaterThan(50);
+  expect(withValues.some((t) => /^#[0-9a-f]{6}/.test(t.value ?? ""))).toBe(
+    true, // colors
+  );
+  expect(withValues.some((t) => /^\d+$/.test(t.value ?? ""))).toBe(true); // spacing
+});
+
+test("token overlay names variables by unique value; ambiguous stays nameless", async () => {
+  const blobs = new MemBlobs();
+  const extract = await new FigmaAdapter(fixtureFetch()).extract(
+    {
+      pat: "pat",
+      libraryFileKey: "LIB",
+      consumerFileKeys: [],
+      tokenOverlay: {
+        "color/bg-surface": "#FFFFFF",
+        "color/text": "#303030",
+        // two names sharing one value → ambiguous, must not apply
+        "color/border-a": "#616161",
+        "color/border-b": "#616161",
+      },
+      // identity join beats value ambiguity: id-keyed names always apply
+      tokenOverlayIds: { "24:6777": "s-text/s-text-base" },
+    },
+    { blobs },
+  );
+  const named = extract.tokens.filter(
+    (t) => t.ref.source === "figma-variable" && t.ref.resolvedName,
+  );
+  const names = named.map((t) => t.ref.resolvedName);
+  expect(names).toContain("color/bg-surface");
+  expect(names).toContain("color/text");
+  expect(names).not.toContain("color/border-a");
+  expect(names).not.toContain("color/border-b");
+  expect(names).toContain("s-text/s-text-base"); // id-joined
+  expect(named.every((t) => t.ref.resolutionConfidence === "inferred")).toBe(
+    true,
+  );
+});
+
+test("token manifest is the exact source of truth: id-joined names, types, values", async () => {
+  const blobs = new MemBlobs();
+  const extract = await new FigmaAdapter(fixtureFetch()).extract(
+    {
+      pat: "pat",
+      libraryFileKey: "LIB",
+      consumerFileKeys: [],
+      tokenManifest: [
+        {
+          id: "VariableID:24:6777",
+          name: "s-text/s-text-base",
+          type: "COLOR",
+          value: "#303030",
+        },
+        {
+          id: "24:6778",
+          name: "s-text/s-text-secondary",
+          type: "COLOR",
+        },
+      ],
+    },
+    { blobs },
+  );
+  const base = extract.tokens.find(
+    (t) => t.ref.nativeId === "VariableID:24:6777",
+  );
+  expect(base?.ref.resolvedName).toBe("s-text/s-text-base");
+  expect(base?.ref.resolutionConfidence).toBe("exact"); // manifest, not guess
+  expect(base?.type).toBe("COLOR");
+  expect(base?.value).toBe("#303030");
+  const secondary = extract.tokens.find(
+    (t) => t.ref.nativeId === "VariableID:24:6778",
+  );
+  expect(secondary?.ref.resolvedName).toBe("s-text/s-text-secondary");
+});
+
 // ---- token identity (spike Q2) ----
 
 test("remote variable IDs parse to stable keys; local ones stay unresolved", () => {

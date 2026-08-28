@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { CanonicalExtract, ComponentDefinition } from "../model";
 import type { ComponentRef } from "../refs";
 import {
+  canonicalValue,
   matchProps,
   normalizeName,
   proposeMappings,
@@ -256,4 +257,110 @@ test("token mappings: exact normalized names only, unnamed tokens never guessed"
   expect(mappings).toHaveLength(1);
   expect(mappings[0]?.figmaToken.resolvedName).toBe("Color/Primary");
   expect(mappings[0]?.codeToken.nativeId).toBe("--color-primary");
+});
+
+test("value canonicalization crosses notations without changing quantities", () => {
+  expect(canonicalValue("rgba(48, 48, 48, 1)")).toBe("#303030");
+  expect(canonicalValue("rgba(0,0,0,0.05)")).toBe("#0000000d");
+  expect(canonicalValue("#303030FF")).toBe("#303030");
+  expect(canonicalValue("4px")).toBe("4");
+  expect(canonicalValue("4")).toBe("4");
+  expect(canonicalValue("300ms")).toBe("300ms"); // unknown units untouched
+});
+
+test("token mappings match across notations: rgba code value links hex figma value", () => {
+  const figma = extract({
+    tokens: [
+      {
+        ref: {
+          nativeId: "VariableID:9:9",
+          source: "figma-variable",
+          resolutionConfidence: "unresolved",
+        },
+        artifactId: "LIB",
+        value: "#303030",
+      },
+    ],
+  });
+  const code = extract({
+    tokens: [
+      {
+        ref: {
+          nativeId: "--p-color-text",
+          resolvedName: "--p-color-text",
+          source: "code",
+          resolutionConfidence: "exact",
+        },
+        artifactId: "@x",
+        value: "rgba(48, 48, 48, 1)",
+      },
+    ],
+  });
+  const mappings = proposeTokenMappings(figma, code);
+  expect(mappings).toHaveLength(1);
+  expect(mappings[0]?.codeToken.nativeId).toBe("--p-color-text");
+});
+
+test("token mappings by exact unique value: nameless variable links to code token", () => {
+  const figma = extract({
+    tokens: [
+      {
+        ref: {
+          nativeId: "VariableID:24:1",
+          source: "figma-variable",
+          resolutionConfidence: "unresolved",
+        },
+        artifactId: "LIB",
+        value: "#005BD3",
+      },
+      // duplicated value on this side → ambiguous, must NOT propose
+      {
+        ref: {
+          nativeId: "VariableID:24:2",
+          source: "figma-variable",
+          resolutionConfidence: "unresolved",
+        },
+        artifactId: "LIB",
+        value: "#ffffff",
+      },
+      {
+        ref: {
+          nativeId: "VariableID:24:3",
+          source: "figma-variable",
+          resolutionConfidence: "unresolved",
+        },
+        artifactId: "LIB",
+        value: "#ffffff",
+      },
+    ],
+  });
+  const code = extract({
+    tokens: [
+      {
+        ref: {
+          nativeId: "--color-primary",
+          resolvedName: "--color-primary",
+          source: "code",
+          resolutionConfidence: "exact",
+        },
+        artifactId: "@acme/ui",
+        value: "#005bd3",
+      },
+      {
+        ref: {
+          nativeId: "--color-white",
+          resolvedName: "--color-white",
+          source: "code",
+          resolutionConfidence: "exact",
+        },
+        artifactId: "@acme/ui",
+        value: "#ffffff",
+      },
+    ],
+  });
+  const mappings = proposeTokenMappings(figma, code);
+  expect(mappings).toHaveLength(1); // value match is case-insensitive
+  expect(mappings[0]?.figmaToken.nativeId).toBe("VariableID:24:1");
+  expect(mappings[0]?.codeToken.nativeId).toBe("--color-primary");
+  expect(mappings[0]?.confidence).toBe(0.85);
 });

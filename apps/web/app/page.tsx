@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Nav } from "../components/nav";
 import { grade } from "../lib/grade";
 import { db } from "../lib/server";
+import { tokenDisplay } from "../lib/token-view";
 import { startAudit } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -145,13 +146,24 @@ export default async function Dashboard() {
     where: eq(schema.snapshotGraphs.snapshotId, latest.id),
   });
   const graph = graphRow?.graph as CanonicalGraph;
-  const tokenUse = new Map<string, { name: string; uses: number }>();
+  const valueByKey = new Map<string, string>();
+  for (const side of ["figma", "code"] as const) {
+    for (const t of graph[side].tokens) {
+      if (t.value) valueByKey.set(tokenKey(t.ref), t.value);
+    }
+  }
+  const tokenUse = new Map<
+    string,
+    { label: string; swatch?: string; uses: number }
+  >();
   for (const side of ["figma", "code"] as const) {
     for (const def of graph[side].definitions) {
       for (const t of def.tokensUsed) {
         const key = tokenKey(t.token);
+        const d = tokenDisplay(t.token, valueByKey.get(key));
         const entry = tokenUse.get(key) ?? {
-          name: t.token.resolvedName ?? t.token.nativeId,
+          label: d.label,
+          swatch: d.swatch,
           uses: 0,
         };
         entry.uses++;
@@ -276,8 +288,21 @@ export default async function Dashboard() {
             </div>
             <ul className="mt-2 divide-y divide-neutral-100 text-sm">
               {topTokens.map((t) => (
-                <li key={t.name} className="flex justify-between py-1.5">
-                  <span className="truncate">{t.name}</span>
+                <li
+                  key={t.label + (t.swatch ?? "")}
+                  className="flex items-center justify-between py-1.5"
+                >
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    {t.swatch && (
+                      <span
+                        className="inline-block h-3.5 w-3.5 shrink-0 rounded border border-neutral-200"
+                        style={{ backgroundColor: t.swatch }}
+                      />
+                    )}
+                    <span className="truncate font-mono text-xs">
+                      {t.label}
+                    </span>
+                  </span>
                   <span className="tabular-nums text-neutral-400">
                     {t.uses}
                   </span>

@@ -164,6 +164,48 @@ export default async function Config() {
         </section>
 
         <section>
+          <h2 className="text-sm font-medium text-neutral-500">
+            Token manifest
+          </h2>
+          <div className="mt-2 rounded-lg border border-neutral-200 bg-white p-4 text-sm">
+            {(() => {
+              const figmaConn = connections.find((c) => c.provider === "figma");
+              const manifest = figmaConn?.config.tokenManifest as
+                | unknown[]
+                | undefined;
+              return manifest && manifest.length > 0 ? (
+                <p>
+                  <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800">
+                    synced
+                  </span>{" "}
+                  {manifest.length} variables — every token has its exact name,
+                  type, and value. Re-run the plugin after editing variables in
+                  Figma.
+                </p>
+              ) : (
+                <div className="text-neutral-600">
+                  <p>
+                    Token names come from the{" "}
+                    <strong>Congruo Token Sync</strong> Figma plugin (works on
+                    every Figma plan — no Enterprise API needed):
+                  </p>
+                  <ol className="mt-2 list-inside list-decimal space-y-1 text-xs">
+                    <li>
+                      In Figma desktop: Plugins → Development → Import plugin
+                      from manifest… → select{" "}
+                      <code>tools/figma-plugin/manifest.json</code> from this
+                      repo
+                    </li>
+                    <li>Open your library file and run the plugin</li>
+                    <li>Click “Send to Congruo” — then run an audit</li>
+                  </ol>
+                </div>
+              );
+            })()}
+          </div>
+        </section>
+
+        <section>
           <h2 className="text-sm font-medium text-neutral-500">Audit runs</h2>
           <ul className="mt-2 divide-y divide-neutral-100 rounded-lg border border-neutral-200 bg-white">
             {runs.map((run) => {

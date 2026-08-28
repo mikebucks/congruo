@@ -1,5 +1,5 @@
 import { globSync, readFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type {
   BlobStore,
   CanonicalExtract,
@@ -16,6 +16,11 @@ import {
   withDefaultConfig,
 } from "react-docgen-typescript";
 import { Project, SyntaxKind } from "ts-morph";
+import {
+  loadTokenValues,
+  resolveTokenValue,
+  type TokenValuesSource,
+} from "./token-values";
 
 export interface TokenPatterns {
   /** Identifiers treated as theme objects: `theme.colors.border`. */
@@ -42,6 +47,9 @@ export interface CodeConfig {
   dsPackages: DsPackageConfig[];
   appGlob: string;
   tokenPatterns?: TokenPatterns;
+  /** Token definition files (css / json / token-ts) resolving what each
+   * referenced token is worth — enables values, and value-based linking. */
+  tokenValues?: TokenValuesSource[];
 }
 
 const DEFAULT_PATTERNS: Required<TokenPatterns> = {
@@ -107,7 +115,20 @@ export class CodeAdapter implements SourceAdapter<CodeConfig> {
       extractDefinitions(config, pkg, dsFiles, storyBasenames, out);
     }
     extractUsages(config, project, appArtifactId, out);
+    applyTokenValues(config, out);
     return out;
+  }
+}
+
+/** Resolves referenced code tokens against configured token definition files. */
+function applyTokenValues(config: CodeConfig, out: CanonicalExtract): void {
+  if (!config.tokenValues || config.tokenValues.length === 0) return;
+  const values = loadTokenValues(config.rootDir, config.tokenValues);
+  if (values.size === 0) return;
+  for (const t of out.tokens) {
+    if (t.value) continue;
+    const value = resolveTokenValue(t.ref.nativeId, values, config.tokenValues);
+    if (value) t.value = value;
   }
 }
 
@@ -184,6 +205,24 @@ function extractDefinitions(
       config.sha,
       patterns,
     );
+    // a component's token usage often lives in its stylesheet, not its TSX
+    for (const styleFile of globSync("*.{css,scss,sass,less}", {
+      cwd: dirname(file),
+    }).sort()) {
+      const stylePath = join(dirname(file), styleFile);
+      const styleRel = relative(config.rootDir, stylePath);
+      const scanned = scanStyleText(
+        readFileSync(stylePath, "utf8"),
+        styleRel,
+        config.sha,
+        patterns,
+      );
+      const known = new Set(tokensUsed.map((t) => t.token.nativeId));
+      for (const t of scanned.tokensUsed) {
+        if (!known.has(t.token.nativeId)) tokensUsed.push(t);
+      }
+      hardcodedValues.push(...scanned.hardcodedValues);
+    }
     for (const t of tokensUsed) seenTokens.set(tokenKey(t.token), t.token);
     const fileBase = basename(file).replace(/\.[jt]sx?$/, "");
 

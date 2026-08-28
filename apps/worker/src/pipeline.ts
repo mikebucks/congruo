@@ -25,7 +25,11 @@ import {
   type CodeConfig,
   cloneAndExtract,
 } from "@congruo/ingest-code";
-import { FigmaAdapter, type FigmaConfig } from "@congruo/ingest-figma";
+import {
+  FigmaAdapter,
+  type FigmaConfig,
+  type TokenManifestEntry,
+} from "@congruo/ingest-figma";
 import {
   computeCoverage,
   computeScores,
@@ -132,6 +136,15 @@ async function runPipeline(
       pat: decryptToken(figmaConn.encryptedToken, deps.encKeys),
       libraryFileKey: String(figmaConn.config.libraryFileKey),
       consumerFileKeys: (figmaConn.config.consumerFileKeys as string[]) ?? [],
+      tokenOverlay: figmaConn.config.tokenOverlay as
+        | Record<string, string>
+        | undefined,
+      tokenOverlayIds: figmaConn.config.tokenOverlayIds as
+        | Record<string, string>
+        | undefined,
+      tokenManifest: figmaConn.config.tokenManifest as
+        | TokenManifestEntry[]
+        | undefined,
     };
     figma = await new FigmaAdapter(deps.figmaFetch).extract(figmaConfig, {
       blobs,

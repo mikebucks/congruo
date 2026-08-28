@@ -179,6 +179,27 @@ function singleOrNone<T>(items: T[]): T | undefined {
   return items.length === 1 ? items[0] : undefined;
 }
 
+/** Format-normalizes a token value so exact comparison crosses notations:
+ * rgba(48,48,48,1) ≡ #303030 ≡ #303030ff; "4px" ≡ "4". Still exact — only
+ * the notation changes, never the quantity. */
+export function canonicalValue(raw: string): string {
+  const v = raw.trim().toLowerCase();
+  const rgba = v.match(
+    /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/,
+  );
+  if (rgba?.[1] && rgba[2] && rgba[3]) {
+    const h = (n: number) => n.toString(16).padStart(2, "0");
+    const alpha = rgba[4] === undefined ? 1 : Number(rgba[4]);
+    const base = `#${h(Number(rgba[1]))}${h(Number(rgba[2]))}${h(Number(rgba[3]))}`;
+    return alpha < 1 ? `${base}${h(Math.round(alpha * 255))}` : base;
+  }
+  const hex8 = v.match(/^(#[0-9a-f]{6})ff$/);
+  if (hex8?.[1]) return hex8[1];
+  const px = v.match(/^(-?[\d.]+)px$/);
+  if (px?.[1]) return px[1];
+  return v;
+}
+
 // ---- prop-level matching ----
 
 function normalizeProp(name: string): string {
@@ -240,8 +261,11 @@ function normalizeToken(name: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-/** Conservative: exact normalized-name equality only. Tokens without resolved
- * names cannot be proposed — they surface as unassessed, never guessed. */
+/** Conservative, two exact signals only — never fuzzy-guessed:
+ * 1. normalized NAME equality (when both sides have resolved names)
+ * 2. exact resolved VALUE equality (when both sides know their value and it
+ *    is unique on each side — #005bd3 in Figma = #005bd3 in code)
+ * Tokens with neither signal surface as unassessed. */
 export function proposeTokenMappings(
   figma: CanonicalExtract,
   code: CanonicalExtract,
@@ -252,6 +276,7 @@ export function proposeTokenMappings(
       .map((t) => [normalizeToken(t.ref.resolvedName ?? ""), t.ref]),
   );
   const out: TokenMapping[] = [];
+  const mappedFigma = new Set<string>();
   for (const t of figma.tokens) {
     if (!t.ref.resolvedName) continue;
     const codeRef = codeByNorm.get(normalizeToken(t.ref.resolvedName));
@@ -260,6 +285,35 @@ export function proposeTokenMappings(
         figmaToken: t.ref,
         codeToken: codeRef,
         confidence: 0.9,
+        source: "auto",
+      });
+      mappedFigma.add(t.ref.nativeId);
+    }
+  }
+
+  const uniqueByValue = (tokens: CanonicalExtract["tokens"]) => {
+    const byValue = new Map<string, (typeof tokens)[number][]>();
+    for (const t of tokens) {
+      const v = t.value ? canonicalValue(t.value) : undefined;
+      if (!v) continue;
+      byValue.set(v, [...(byValue.get(v) ?? []), t]);
+    }
+    return new Map(
+      [...byValue.entries()]
+        .filter(([, list]) => list.length === 1 && list[0])
+        .map(([v, list]) => [v, (list[0] as (typeof tokens)[number]).ref]),
+    );
+  };
+  const codeByValue = uniqueByValue(code.tokens);
+  const figmaByValue = uniqueByValue(figma.tokens);
+  for (const [value, figmaRef] of figmaByValue) {
+    if (mappedFigma.has(figmaRef.nativeId)) continue;
+    const codeRef = codeByValue.get(value);
+    if (codeRef) {
+      out.push({
+        figmaToken: figmaRef,
+        codeToken: codeRef,
+        confidence: 0.85,
         source: "auto",
       });
     }

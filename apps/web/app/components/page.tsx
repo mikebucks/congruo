@@ -249,11 +249,11 @@ export default async function MappingReview() {
               const name = r.codeDef?.name ?? r.figmaDef?.name ?? r.key;
               const subjectSide = r.figmaDef ? "figma" : "code";
               // scores key on the canonical subject (code side of a pair)
-            const score =
-              scoresByKey.get(r.key) ??
-              (r.effective
-                ? scoresByKey.get(refKey(r.effective.codeRef))
-                : undefined);
+              const score =
+                scoresByKey.get(r.key) ??
+                (r.effective
+                  ? scoresByKey.get(refKey(r.effective.codeRef))
+                  : undefined);
               const cell = (v: number | null | undefined) => (
                 <td
                   className={`py-2 pr-1 tabular-nums ${

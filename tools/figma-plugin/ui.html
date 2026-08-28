@@ -1,0 +1,50 @@
+<style>
+  body { font: 12px/1.5 -apple-system, sans-serif; margin: 12px; color: #111; }
+  textarea { width: 100%; height: 220px; font: 10px monospace; box-sizing: border-box; }
+  button { margin: 8px 8px 0 0; padding: 6px 12px; }
+  #status { color: #666; margin-bottom: 8px; }
+</style>
+<div id="status">collecting variables…</div>
+<textarea id="out" readonly></textarea>
+<div>
+  <button id="send">Send to Congruo (localhost:3000)</button>
+  <button id="copy">Copy JSON</button>
+</div>
+<script>
+  let manifest = null;
+  onmessage = (e) => {
+    const msg = e.data.pluginMessage;
+    if (!msg) return;
+    if (msg.kind === "status") {
+      document.getElementById("status").textContent = msg.text;
+    }
+    if (msg.kind === "manifest") {
+      manifest = msg.manifest;
+      document.getElementById("status").textContent =
+        msg.manifest.length + " variables from “" + msg.fileName + "”";
+      document.getElementById("out").value = JSON.stringify(msg.manifest, null, 1);
+    }
+  };
+  document.getElementById("copy").onclick = () => {
+    document.getElementById("out").select();
+    document.execCommand("copy");
+    parent.postMessage({ pluginMessage: { kind: "done", text: "Manifest copied" } }, "*");
+  };
+  document.getElementById("send").onclick = async () => {
+    try {
+      const res = await fetch("http://localhost:3000/api/token-manifest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ manifest }),
+      });
+      const body = await res.json();
+      parent.postMessage(
+        { pluginMessage: { kind: "done", text: "Synced " + body.count + " tokens" } },
+        "*",
+      );
+    } catch (err) {
+      document.getElementById("status").textContent =
+        "Could not reach Congruo — is it running? (" + err + ")";
+    }
+  };
+</script>

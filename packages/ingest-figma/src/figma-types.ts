@@ -34,6 +34,8 @@ export interface FigmaNode {
   paddingTop?: number;
   paddingBottom?: number;
   itemSpacing?: number;
+  cornerRadius?: number;
+  strokeWeight?: number;
   componentId?: string;
   componentProperties?: Record<
     string,

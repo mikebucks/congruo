@@ -50,15 +50,10 @@ export async function cloneAndExtract(
 
     if (config.installDeps) await install(dir);
 
+    // spread, don't hand-copy: new CodeConfig fields must flow through
+    const { repoUrl: _url, sha: _sha, installDeps: _install, ...rest } = config;
     const extract = await new CodeAdapter().extract(
-      {
-        rootDir: dir,
-        repo: repoIdentity(config.repoUrl),
-        sha,
-        dsPackages: config.dsPackages,
-        appGlob: config.appGlob,
-        tokenPatterns: config.tokenPatterns,
-      },
+      { ...rest, rootDir: dir, repo: repoIdentity(config.repoUrl), sha },
       deps,
     );
     return { extract, sha };

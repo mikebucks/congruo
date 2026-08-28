@@ -52,6 +52,8 @@ export interface TokenDefinition {
   ref: TokenRef;
   artifactId: string;
   value?: string;
+  /** COLOR / FLOAT / STRING / BOOLEAN — from a token manifest when known. */
+  type?: string;
 }
 
 export interface ExtractionDiagnostic {

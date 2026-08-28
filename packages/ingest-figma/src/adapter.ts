@@ -26,6 +26,30 @@ export interface FigmaConfig {
   pat: string;
   libraryFileKey: string;
   consumerFileKeys: string[];
+  /** name → value map naming otherwise-nameless variables by their resolved
+   * value. Source-agnostic: Dev Mode MCP extraction, a Figma plugin export,
+   * or Tokens Studio — the REST Variables API needs Enterprise, names don't. */
+  tokenOverlay?: Record<string, string>;
+  /** variable id → name, for variables whose VALUE is ambiguous (three tokens
+   * sharing #303030). Ids are local ("24:6777") or remote key hashes; joined
+   * by identity, so these always win over value matching. */
+  tokenOverlayIds?: Record<string, string>;
+  /** THE self-serve source of truth: the complete variables table exported by
+   * the Congruo Figma plugin (Plugin API — all plans). ID-keyed and exact;
+   * overlays and render-value capture are fallbacks beneath it. */
+  tokenManifest?: TokenManifestEntry[];
+}
+
+export interface TokenManifestEntry {
+  /** "VariableID:24:6777" or bare "24:6777". */
+  id: string;
+  /** Stable publish key when the variable is published. */
+  key?: string;
+  name: string;
+  /** COLOR / FLOAT / STRING / BOOLEAN. */
+  type?: string;
+  /** Resolved value in the default mode, e.g. "#303030" or "12". */
+  value?: string;
 }
 
 export class FigmaAdapter implements SourceAdapter<FigmaConfig> {
@@ -46,6 +70,8 @@ export class FigmaAdapter implements SourceAdapter<FigmaConfig> {
       deps.blobs,
     );
     extractDefinitions(library, config.libraryFileKey, out);
+    applyTokenManifest(out, config.tokenManifest);
+    applyTokenOverlay(out, config.tokenOverlay, config.tokenOverlayIds);
 
     for (const key of config.consumerFileKeys) {
       const consumer = await this.loadFile(
@@ -79,6 +105,101 @@ export class FigmaAdapter implements SourceAdapter<FigmaConfig> {
       role,
     } satisfies SourceArtifact);
     return file;
+  }
+}
+
+/** Applies the plugin-exported variables table: exact names, types, and
+ * values joined by variable identity. Complete and unambiguous — this is what
+ * "the system knows every token" means. */
+function applyTokenManifest(
+  out: CanonicalExtract,
+  manifest: TokenManifestEntry[] | undefined,
+): void {
+  if (!manifest || manifest.length === 0) return;
+  const normId = (id: string) => id.replace(/^VariableID:/, "");
+  const byId = new Map<string, TokenManifestEntry>();
+  const byKey = new Map<string, TokenManifestEntry>();
+  for (const entry of manifest) {
+    byId.set(normId(entry.id), entry);
+    if (entry.key) byKey.set(entry.key, entry);
+  }
+  const lookup = (ref: TokenRef): TokenManifestEntry | undefined => {
+    const local = normId(ref.nativeId).replace(/^.*[/]/, "");
+    return (
+      byId.get(normId(ref.nativeId)) ??
+      byId.get(local) ??
+      (ref.stableKey ? byKey.get(ref.stableKey) : undefined)
+    );
+  };
+  const apply = (ref: TokenRef): TokenManifestEntry | undefined => {
+    if (ref.source !== "figma-variable" && ref.source !== "figma-style") {
+      return undefined;
+    }
+    const entry = lookup(ref);
+    if (entry) {
+      ref.resolvedName = entry.name;
+      ref.resolutionConfidence = "exact";
+    }
+    return entry;
+  };
+  for (const t of out.tokens) {
+    const entry = apply(t.ref);
+    if (entry) {
+      if (entry.value) t.value = entry.value;
+      if (entry.type) t.type = entry.type;
+    }
+  }
+  for (const def of out.definitions) {
+    for (const used of def.tokensUsed) apply(used.token);
+  }
+}
+
+/** Names variables whose captured value matches exactly one overlay entry.
+ * Ambiguous values (two names sharing #ffffff, every "0") stay nameless —
+ * inferred, never guessed. */
+function applyTokenOverlay(
+  out: CanonicalExtract,
+  overlay: Record<string, string> | undefined,
+  overlayIds: Record<string, string> | undefined,
+): void {
+  if (!overlay && !overlayIds) return;
+  const byValue = new Map<string, string | null>(); // null = ambiguous
+  for (const [name, value] of Object.entries(overlay ?? {})) {
+    const v = value.trim().toLowerCase();
+    byValue.set(v, byValue.has(v) ? null : name);
+  }
+  const nameFor = (value: string | undefined): string | undefined => {
+    if (!value) return undefined;
+    return byValue.get(value.trim().toLowerCase()) ?? undefined;
+  };
+  // ids join by identity: "24:6777" (local) or the remote key hash
+  const byId = (ref: TokenRef): string | undefined => {
+    if (!overlayIds) return undefined;
+    const local = ref.nativeId.replace(/^VariableID:/, "").replace(/^.*\//, "");
+    return (
+      overlayIds[ref.nativeId] ??
+      overlayIds[local] ??
+      (ref.stableKey ? overlayIds[ref.stableKey] : undefined)
+    );
+  };
+  const named = new Map<string, string>();
+  for (const t of out.tokens) {
+    if (t.ref.source !== "figma-variable" || t.ref.resolvedName) continue;
+    const name = byId(t.ref) ?? nameFor(t.value);
+    if (name) {
+      t.ref.resolvedName = name;
+      t.ref.resolutionConfidence = "inferred";
+      named.set(tokenKey(t.ref), name);
+    }
+  }
+  for (const def of out.definitions) {
+    for (const used of def.tokensUsed) {
+      const name = named.get(tokenKey(used.token));
+      if (name && !used.token.resolvedName) {
+        used.token.resolvedName = name;
+        used.token.resolutionConfidence = "inferred";
+      }
+    }
   }
 }
 
@@ -122,6 +243,7 @@ function extractDefinitions(
 ): void {
   const byId = indexNodes(file);
   const seenTokens = new Map<string, TokenRef>();
+  const tokenValues = new Map<string, string>();
 
   const define = (nodeId: string, meta: FigmaComponentMeta) => {
     const node = byId.get(nodeId);
@@ -151,7 +273,7 @@ function extractDefinitions(
           null,
       },
     };
-    collectStyleValues(node, file, fileKey, def, seenTokens);
+    collectStyleValues(node, file, fileKey, def, seenTokens, tokenValues);
     out.definitions.push(def);
   };
 
@@ -163,7 +285,12 @@ function extractDefinitions(
   }
   out.tokens.push(
     ...[...seenTokens.values()].map(
-      (ref) => ({ ref, artifactId: fileKey }) satisfies TokenDefinition,
+      (ref) =>
+        ({
+          ref,
+          artifactId: fileKey,
+          value: tokenValues.get(tokenKey(ref)),
+        }) satisfies TokenDefinition,
     ),
   );
 }
@@ -206,6 +333,7 @@ function collectStyleValues(
   fileKey: string,
   def: ComponentDefinition,
   seenTokens: Map<string, TokenRef>,
+  tokenValues: Map<string, string>,
 ): void {
   const usedPairs = new Set<string>();
   const use = (ref: TokenRef, property: string) => {
@@ -215,6 +343,13 @@ function collectStyleValues(
     seenTokens.set(tokenKey(ref), ref);
     def.tokensUsed.push({ token: ref, property });
   };
+  // Variable NAMES need the Enterprise API, but file JSON carries the
+  // RESOLVED render values right next to the bindings — capture them so a
+  // nameless variable can display as what it is (#005bd3, 16px…).
+  const capture = (variableId: string, value: string) => {
+    const key = tokenKey(variableTokenRef(variableId));
+    if (!tokenValues.has(key)) tokenValues.set(key, value);
+  };
 
   const walk = (n: FigmaNode, isRoot: boolean) => {
     if (!isRoot && n.type === "INSTANCE") return;
@@ -223,6 +358,47 @@ function collectStyleValues(
       for (const alias of flattenAliases(binding)) {
         use(variableTokenRef(alias.id), property);
       }
+    }
+
+    // resolved values co-located with bindings
+    for (const paints of [n.fills, n.strokes]) {
+      for (const paint of paints ?? []) {
+        const boundId = paint.boundVariables?.color?.id;
+        if (boundId && paint.type === "SOLID" && paint.color) {
+          capture(boundId, rgbaToHex(paint.color));
+        }
+      }
+    }
+    for (const slot of ["fills", "strokes"] as const) {
+      const aliases = n.boundVariables?.[slot];
+      const paints = slot === "fills" ? n.fills : n.strokes;
+      const solid = (paints ?? []).filter(
+        (p) => p.type === "SOLID" && p.visible !== false && p.color,
+      );
+      if (aliases && solid.length === 1 && solid[0]?.color) {
+        const [alias] = flattenAliases(aliases);
+        if (alias) capture(alias.id, rgbaToHex(solid[0].color));
+      }
+    }
+    for (const prop of [
+      "paddingLeft",
+      "paddingRight",
+      "paddingTop",
+      "paddingBottom",
+      "itemSpacing",
+      "cornerRadius",
+      "strokeWeight",
+    ] as const) {
+      const binding = n.boundVariables?.[prop];
+      const value = n[prop];
+      if (binding && typeof value === "number") {
+        const [alias] = flattenAliases(binding);
+        if (alias) capture(alias.id, String(value));
+      }
+    }
+    if (n.boundVariables?.fontSize && n.style?.fontSize !== undefined) {
+      const [alias] = flattenAliases(n.boundVariables.fontSize);
+      if (alias) capture(alias.id, String(n.style.fontSize));
     }
     for (const [slot, styleId] of Object.entries(n.styles ?? {})) {
       use(styleTokenRef(styleId, file.styles[styleId]), slot);

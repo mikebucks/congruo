@@ -1,0 +1,12 @@
+{
+  "name": "Congruo Token Sync",
+  "id": "congruo-token-sync",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["http://localhost:3000"],
+    "reasoning": "Sends the exported token manifest to the local Congruo app"
+  }
+}
