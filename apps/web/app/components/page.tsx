@@ -2,7 +2,6 @@ import type {
   CanonicalGraph,
   ComponentDefinition,
   ComponentRef,
-  ComponentStatus,
   Dimension,
   Mapping,
   MatcherConfig,
@@ -10,27 +9,13 @@ import type {
 import { DEFAULT_MATCHER_CONFIG, proposeMappings, refKey } from "@congruo/core";
 import { schema } from "@congruo/db";
 import { desc, eq } from "drizzle-orm";
-import Link from "next/link";
 import { Nav } from "../../components/nav";
 import { currentRevision } from "../../lib/revisions";
 import { db } from "../../lib/server";
-import {
-  assignMapping,
-  confirmMapping,
-  ignoreComponent,
-  setStatus,
-  unignoreComponent,
-  unlinkMapping,
-} from "./actions";
+import { ignoreComponent, unignoreComponent } from "./actions";
+import { type ComponentRowData, ComponentsTable } from "./components-table";
 
 export const dynamic = "force-dynamic";
-
-const STATUSES: ComponentStatus[] = [
-  "stable",
-  "new",
-  "experimental",
-  "deprecated",
-];
 
 /** One row per LOGICAL component: it may exist in Figma, in code, or both.
  * A workspace with only one side connected still gets a full list. */
@@ -155,8 +140,6 @@ export default async function MappingReview() {
     })
     .map((d) => ({ name: d.name, ref: d.ref }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const codeCandidatesJson = JSON.stringify(codeCandidates);
-  const figmaCandidatesJson = JSON.stringify(figmaCandidates);
 
   const primaryDef = (r: Row) =>
     (r.figmaDef ?? r.codeDef) as ComponentDefinition;
@@ -174,25 +157,54 @@ export default async function MappingReview() {
     })
     .map((r) => primaryRef(r));
 
-  const sideBadge = (r: Row) =>
-    r.figmaDef && r.codeDef ? (
-      <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-800">
-        both
-      </span>
-    ) : r.figmaDef ? (
-      <span className="rounded bg-pink-100 px-1.5 py-0.5 text-xs text-pink-800">
-        figma
-      </span>
-    ) : (
-      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-800">
-        code
-      </span>
-    );
+  const tableRows: ComponentRowData[] = rows.map((r) => {
+    const name = r.codeDef?.name ?? r.figmaDef?.name ?? r.key;
+    // scores key on the canonical subject (code side of a pair)
+    const score =
+      scoresByKey.get(r.key) ??
+      (r.effective ? scoresByKey.get(refKey(r.effective.codeRef)) : undefined);
+    const link = r.user
+      ? "user"
+      : r.effective
+        ? "auto"
+        : r.suggested
+          ? "suggested"
+          : "none";
+    return {
+      key: r.key,
+      name,
+      figmaName:
+        r.figmaDef && r.codeDef && r.figmaDef.name !== r.codeDef.name
+          ? r.figmaDef.name
+          : undefined,
+      side: r.figmaDef && r.codeDef ? "both" : r.figmaDef ? "figma" : "code",
+      usage: score?.usageTotal ?? 0,
+      scores: {
+        parity: score?.scores.parity ?? null,
+        complexity: score?.scores.complexity ?? null,
+        adoption: score?.scores.adoption ?? null,
+        documentation: score?.scores.documentation ?? null,
+      },
+      link,
+      confidence: (r.effective ?? r.suggested)?.confidence,
+      suggestedSymbol:
+        r.suggested?.codeRef.kind === "code"
+          ? r.suggested.codeRef.exportSymbol
+          : undefined,
+      status: statusByRef.get(r.key) ?? "stable",
+      subjectSide: r.figmaDef ? "figma" : "code",
+      primaryRef: primaryRef(r),
+      figmaRef: r.figmaDef?.ref,
+      suggestedCodeRef: r.suggested?.codeRef,
+      effectiveFigmaRef: r.effective?.figmaRef,
+      detailHref: `/report/${latest.id}/component/${encodeURIComponent(r.key)}`,
+    };
+  });
 
   return (
     <>
       <Nav active="components" />
-      <main className="mx-auto max-w-5xl p-8">
+      <main className="mx-auto max-w-6xl p-8">
         <h1 className="text-2xl font-semibold">Components</h1>
         <p className="mt-1 text-sm text-neutral-500">
           {rows.length} components · {linked} exist in both Figma and code ·{" "}
@@ -218,259 +230,12 @@ export default async function MappingReview() {
           </form>
         )}
 
-        <datalist id="code-candidates">
-          {codeCandidates.map((c) => (
-            <option key={refKey(c.ref)} value={c.name} />
-          ))}
-        </datalist>
-        <datalist id="figma-candidates">
-          {figmaCandidates.map((c) => (
-            <option key={refKey(c.ref)} value={c.name} />
-          ))}
-        </datalist>
-
-        <table className="mt-6 w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-neutral-300 text-left text-xs text-neutral-500">
-              <th className="py-2 pr-3">Component</th>
-              <th className="py-2 pr-3">Exists in</th>
-              <th className="py-2 pr-2">Usage</th>
-              <th className="py-2 pr-1">Par</th>
-              <th className="py-2 pr-1">Cpx</th>
-              <th className="py-2 pr-1">Adp</th>
-              <th className="py-2 pr-2">Doc</th>
-              <th className="py-2 pr-4">Figma ↔ code link</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const name = r.codeDef?.name ?? r.figmaDef?.name ?? r.key;
-              const subjectSide = r.figmaDef ? "figma" : "code";
-              // scores key on the canonical subject (code side of a pair)
-              const score =
-                scoresByKey.get(r.key) ??
-                (r.effective
-                  ? scoresByKey.get(refKey(r.effective.codeRef))
-                  : undefined);
-              const cell = (v: number | null | undefined) => (
-                <td
-                  className={`py-2 pr-1 tabular-nums ${
-                    v == null
-                      ? "text-neutral-300"
-                      : v < 50
-                        ? "text-red-700"
-                        : v < 80
-                          ? "text-amber-700"
-                          : "text-neutral-600"
-                  }`}
-                >
-                  {v == null ? "—" : Math.round(v)}
-                </td>
-              );
-              return (
-                <tr key={r.key} className="border-b border-neutral-100">
-                  <td className="py-2 pr-3">
-                    <Link
-                      className="hover:underline"
-                      href={`/report/${latest.id}/component/${encodeURIComponent(r.key)}`}
-                    >
-                      {name}
-                    </Link>
-                    {r.figmaDef &&
-                      r.codeDef &&
-                      r.figmaDef.name !== r.codeDef.name && (
-                        <span className="ml-2 text-xs text-neutral-400">
-                          figma: {r.figmaDef.name}
-                        </span>
-                      )}
-                  </td>
-                  <td className="py-2 pr-3">{sideBadge(r)}</td>
-                  <td className="py-2 pr-2 tabular-nums text-neutral-500">
-                    {score?.usageTotal ?? 0}
-                  </td>
-                  {cell(score?.scores.parity)}
-                  {cell(score?.scores.complexity)}
-                  {cell(score?.scores.adoption)}
-                  {cell(score?.scores.documentation)}
-                  <td className="py-2 pr-4">
-                    {r.user ? (
-                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-800">
-                        user
-                      </span>
-                    ) : r.effective ? (
-                      <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800">
-                        auto {Math.round(r.effective.confidence * 100)}%
-                      </span>
-                    ) : r.suggested ? (
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
-                        suggested:{" "}
-                        {r.suggested.codeRef.kind === "code"
-                          ? r.suggested.codeRef.exportSymbol
-                          : ""}{" "}
-                        {Math.round(r.suggested.confidence * 100)}%
-                      </span>
-                    ) : (
-                      <span className="text-xs text-neutral-400">
-                        not linked
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 pr-4">
-                    <form action={setStatus} className="inline">
-                      <input
-                        type="hidden"
-                        name="workspaceId"
-                        value={workspace.id}
-                      />
-                      <input
-                        type="hidden"
-                        name="ref"
-                        value={JSON.stringify(primaryRef(r))}
-                      />
-                      <select
-                        name="status"
-                        defaultValue={statusByRef.get(r.key) ?? "stable"}
-                        className="rounded border border-neutral-200 px-1 py-0.5 text-xs"
-                      >
-                        {STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="submit"
-                        className="ml-1 text-xs text-blue-600 underline"
-                      >
-                        set
-                      </button>
-                    </form>
-                  </td>
-                  <td className="py-2">
-                    {r.suggested && !r.user && (
-                      <form action={confirmMapping} className="mr-2 inline">
-                        <input
-                          type="hidden"
-                          name="workspaceId"
-                          value={workspace.id}
-                        />
-                        <input
-                          type="hidden"
-                          name="figmaRef"
-                          value={JSON.stringify(r.figmaDef?.ref)}
-                        />
-                        <input
-                          type="hidden"
-                          name="codeRef"
-                          value={JSON.stringify(r.suggested.codeRef)}
-                        />
-                        <button
-                          type="submit"
-                          className="text-xs text-green-700 underline"
-                        >
-                          confirm
-                        </button>
-                      </form>
-                    )}
-                    {r.effective && (
-                      <form action={unlinkMapping} className="inline">
-                        <input
-                          type="hidden"
-                          name="workspaceId"
-                          value={workspace.id}
-                        />
-                        <input
-                          type="hidden"
-                          name="figmaRef"
-                          value={JSON.stringify(r.effective.figmaRef)}
-                        />
-                        <button
-                          type="submit"
-                          className="text-xs text-red-700 underline"
-                        >
-                          unlink
-                        </button>
-                      </form>
-                    )}
-                    {!r.effective && (
-                      <span className="inline-flex items-center gap-1">
-                        <form
-                          action={assignMapping}
-                          className="inline-flex gap-1"
-                        >
-                          <input
-                            type="hidden"
-                            name="workspaceId"
-                            value={workspace.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="subjectSide"
-                            value={subjectSide}
-                          />
-                          <input
-                            type="hidden"
-                            name="subjectRef"
-                            value={JSON.stringify(primaryRef(r))}
-                          />
-                          <input
-                            type="hidden"
-                            name="candidates"
-                            value={
-                              subjectSide === "figma"
-                                ? codeCandidatesJson
-                                : figmaCandidatesJson
-                            }
-                          />
-                          <input
-                            name="counterpartName"
-                            list={
-                              subjectSide === "figma"
-                                ? "code-candidates"
-                                : "figma-candidates"
-                            }
-                            placeholder={
-                              subjectSide === "figma"
-                                ? "link code…"
-                                : "link figma…"
-                            }
-                            className="w-28 rounded border border-neutral-200 px-1 py-0.5 text-xs"
-                          />
-                          <button
-                            type="submit"
-                            className="text-xs text-blue-600 underline"
-                          >
-                            set
-                          </button>
-                        </form>
-                        <form action={ignoreComponent} className="inline">
-                          <input
-                            type="hidden"
-                            name="workspaceId"
-                            value={workspace.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="refs"
-                            value={JSON.stringify([primaryRef(r)])}
-                          />
-                          <button
-                            type="submit"
-                            className="text-xs text-neutral-400 underline"
-                          >
-                            ignore
-                          </button>
-                        </form>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <ComponentsTable
+          rows={tableRows}
+          workspaceId={workspace.id}
+          codeCandidates={codeCandidates}
+          figmaCandidates={figmaCandidates}
+        />
 
         {ignoredRows.length > 0 && (
           <details className="mt-8">

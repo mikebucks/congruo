@@ -5,6 +5,8 @@
     "jsx": "preserve",
     "moduleResolution": "bundler",
     "allowJs": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] },
     "incremental": true,
     "plugins": [{ "name": "next" }]
   },
